@@ -1,7 +1,7 @@
 // Gemini AI configuration - uses v1beta REST API
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_URL_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const MODEL = 'gemini-2.0-flash';
+const MODEL = 'gemini-2.0-flash-lite';
 
 /**
  * Parse user query to extract intent (category, date, location)

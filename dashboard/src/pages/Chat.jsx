@@ -129,8 +129,8 @@ export default function Chat() {
       setMessages(prev => [...prev, { 
         sender: 'ai', 
         text: data.reply || "I found some events for you!",
-        citations: data.citations || [],
-        eventbriteEvents: data.eventbriteEvents || []
+        eventbriteEvents: data.eventbriteEvents || [],
+        dynamicEvents: data.dynamicEvents || [] // Include platform info
       }])
     } catch (error) {
       setIsTyping(false)
@@ -175,6 +175,21 @@ export default function Chat() {
     })
   }
 
+  // Get platform badge color and icon
+  const getPlatformStyle = (platform) => {
+    const styles = {
+      'Meetup': { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', icon: '👥' },
+      'Luma': { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30', icon: '✨' },
+      'GoodRec': { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: '⚽' },
+      'Eventbrite': { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30', icon: '🎟️' },
+      'Perplexity': { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', icon: '🔍' },
+      'Dice.fm': { bg: 'bg-pink-500/20', text: 'text-pink-400', border: 'border-pink-500/30', icon: '🎵' },
+      'Resident Advisor': { bg: 'bg-indigo-500/20', text: 'text-indigo-400', border: 'border-indigo-500/30', icon: '🎧' },
+      'Web': { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', icon: '🌐' }
+    }
+    return styles[platform] || styles['Web']
+  }
+
   // Extract event information from text
   const extractEvents = (text) => {
     if (!text) return []
@@ -190,7 +205,7 @@ export default function Chat() {
       if (!trimmed || trimmed.length < 3) return
       
       // Detect event name - usually a bold line or title without emojis
-      if (trimmed && !trimmed.match(/^[🕓📍💰💡🔗🎵🎤🌃🍝💻🧠🧩🎯⚙️🗽]/) && !trimmed.startsWith('http')) {
+      if (trimmed && !trimmed.match(/^[🕓📍💰💡🔗🎵🎤🌃🍝💻🧠🧩🎯⚙️🗽]/) && !trimmed.startsWith('http') && !trimmed.toLowerCase().startsWith('platform:') && !trimmed.toLowerCase().startsWith('source:')) {
         // Check if next lines have event details (emojis)
         const nextLines = lines.slice(index + 1, index + 7).join('\n')
         if (nextLines.includes('🕓') || nextLines.includes('📍') || nextLines.includes('💰')) {
@@ -208,10 +223,25 @@ export default function Chat() {
           currentEvent.details.price = trimmed.replace(/💰\s*/, '').trim()
         } else if (trimmed.includes('💡')) {
           currentEvent.details.description = trimmed.replace(/💡\s*/, '').trim()
+        } else if (trimmed.toLowerCase().startsWith('platform:')) {
+          // Extract platform name (e.g., "Platform: Meetup" or "Platform: Luma")
+          currentEvent.details.platform = trimmed.replace(/platform:\s*/i, '').trim()
+        } else if (trimmed.toLowerCase().startsWith('source:')) {
+          // Extract source info (e.g., "Source: Luma (Web Search)" or "Source: Meetup (Scraped)")
+          currentEvent.details.source = trimmed.replace(/source:\s*/i, '').trim()
         } else if (trimmed.match(/https?:\/\/[^\s\)]+/)) {
           const urlMatch = trimmed.match(/https?:\/\/[^\s\)]+/)
           if (urlMatch) {
             currentEvent.details.link = urlMatch[0]
+            // Try to detect platform from URL if not already set
+            if (!currentEvent.details.platform) {
+              const url = urlMatch[0].toLowerCase()
+              if (url.includes('meetup.com')) currentEvent.details.platform = 'Meetup'
+              else if (url.includes('lu.ma') || url.includes('luma.com')) currentEvent.details.platform = 'Luma'
+              else if (url.includes('goodrec.com')) currentEvent.details.platform = 'GoodRec'
+              else if (url.includes('eventbrite')) currentEvent.details.platform = 'Eventbrite'
+              else currentEvent.details.platform = 'Web'
+            }
             events.push(currentEvent)
             currentEvent = null
           }
@@ -307,10 +337,10 @@ export default function Chat() {
                     Concerts
                   </button>
                   <button 
-                    onClick={() => handleSuggestionClick('Find tech meetups this week in NYC with registration links')}
+                    onClick={() => handleSuggestionClick('Find tech meetups and networking events on Meetup.com this week')}
                     className="text-xs px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 transition text-white/50 hover:text-white"
                   >
-                    Tech meetups
+                    Meetup events
                   </button>
                   <button 
                     onClick={() => handleSuggestionClick('Find pickup football or soccer games today in NYC')}
@@ -371,10 +401,22 @@ export default function Chat() {
                                 )}
                                 
                                 <div className="space-y-4">
-                                  {events.map((event, idx) => (
-                                    <div key={idx} className="bg-black/40 border border-white/20 rounded-2xl p-5 space-y-3 shadow-lg hover:border-white/30 transition">
-                                      <h4 className="font-bold text-white text-lg leading-tight">{event.name}</h4>
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                                  {events.map((event, idx) => {
+                                    const platformStyle = event.details.platform ? getPlatformStyle(event.details.platform) : null
+                                    const displaySource = event.details.source || event.details.platform
+                                    return (
+                                      <div key={idx} className="bg-black/40 border border-white/20 rounded-2xl p-5 space-y-3 shadow-lg hover:border-white/30 transition">
+                                        {/* Event header with platform badge */}
+                                        <div className="flex items-start justify-between gap-3">
+                                          <h4 className="font-bold text-white text-lg leading-tight flex-1">{event.name}</h4>
+                                          {platformStyle && (
+                                            <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${platformStyle.bg} ${platformStyle.text} ${platformStyle.border} border shrink-0`}>
+                                              <span>{platformStyle.icon}</span>
+                                              <span>{displaySource}</span>
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                                         {event.details.time && (
                                           <div className="flex items-start space-x-3">
                                             <span className="text-lg mt-0.5">🕓</span>
@@ -425,7 +467,8 @@ export default function Chat() {
                                         </a>
                                       )}
                                     </div>
-                                  ))}
+                                    )
+                                  })}
                                 </div>
                               </>
                             )
@@ -439,26 +482,8 @@ export default function Chat() {
                         })()}
                       </>
                     )}
-                    
-                    {/* Event Links - Citation links */}
-                    {msg.citations && msg.citations.length > 0 && (
-                      <div className="mt-4 pt-3 border-t border-white/10">
-                        <p className="text-xs text-white/50 mb-2">More Info:</p>
-                        <div className="flex flex-wrap gap-2">
-                          {msg.citations.slice(0, 5).map((url, idx) => (
-                            <a
-                              key={idx}
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 transition text-white border border-white/20"
-                            >
-                              {new URL(url).hostname.replace('www.', '')}
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+     
+
                   </div>
                 </div>
               ))}

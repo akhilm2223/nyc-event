@@ -48,8 +48,9 @@ FOR EACH EVENT YOU FIND, ALWAYS RETURN:
 2. Date & time (exact format: "Wednesday, Nov 5, 2025 at 6:30 PM")
 3. Location (venue name and neighborhood/address)
 4. Platform (which site it's from: Luma, Eventbrite, Meetup, GoodRec, Dice.fm, or Resident Advisor)
-5. Direct event link (the specific registration/ticket URL, NOT just the main platform page)
-6. Short description (if available on the event page)
+5. Source (format: "[Platform] (Web Search)" - e.g., "Luma (Web Search)", "Eventbrite (Web Search)", "Meetup (Web Search)")
+6. Direct event link (the specific registration/ticket URL, NOT just the main platform page)
+7. Short description (if available on the event page)
 
 FORMAT EACH EVENT LIKE THIS:
 Event Name
