@@ -160,7 +160,8 @@ function normalizeEventbriteEvent(event) {
       event.description.text.substring(0, 200).replace(/<[^>]*>/g, '') + '...' : 
       'Check event page for details',
     link: event.url || `https://www.eventbrite.com/e/${event.id}`,
-    source: 'Eventbrite',
+    platform: 'Eventbrite',
+    source: 'Eventbrite (API)',
     id: event.id,
     category: event.category_id
   };

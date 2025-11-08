@@ -78,6 +78,7 @@ CRITICAL: ONLY extract games in New York City, New York. Skip any games in New J
 Page content:
 ${pageText.substring(0, 8000)}${dateFilter}
 
+<<<<<<< HEAD
 Extract each game with:
 - Event name (e.g., "CO-ED Pickup ${sportName} In [Location]")
 - Date (e.g., "Friday, August 1, 2025")
@@ -101,6 +102,18 @@ ${date && dateFormats.length > 0 ? `IMPORTANT: Only show games for ${dateFormats
 CRITICAL: Only include games in New York City. Filter out New Jersey and other cities.`;
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+=======
+${date && dateFormats.length > 0 ? `IMPORTANT: Only extract games for ${dateFormats[0]}. Skip all other dates.` : 'Extract all games found.'}
+
+For each game, extract:
+- name: Event name (e.g., "9 v 9 CO-ED Pickup Soccer In Bushwick Inlet")
+- time: Date and time combined (e.g., "Friday, August 1, 2025 at 09:00 AM")
+- location: Location (e.g., "Bushwick Inlet, Williamsburg")
+- format: Format (9v9, 11v11, etc.) if mentioned
+- description: Brief description (e.g., "9v9 pickup soccer game")`;
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
+>>>>>>> cc2ed5cc07f90f8867f11b44812197043179af4d
     
     const response = await fetch(geminiUrl, {
       method: 'POST',
@@ -109,7 +122,30 @@ CRITICAL: Only include games in New York City. Filter out New Jersey and other c
         contents: [{
           role: 'user',
           parts: [{ text: prompt }]
-        }]
+        }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'object',
+            properties: {
+              events: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string', description: 'Event name' },
+                    time: { type: 'string', description: 'Date and time combined' },
+                    location: { type: 'string', description: 'Location/venue' },
+                    format: { type: 'string', description: 'Game format (9v9, 11v11, etc.)', nullable: true },
+                    description: { type: 'string', description: 'Brief description' }
+                  },
+                  required: ['name', 'time', 'location']
+                }
+              }
+            },
+            required: ['events']
+          }
+        }
       })
     });
     
@@ -119,10 +155,20 @@ CRITICAL: Only include games in New York City. Filter out New Jersey and other c
       throw new Error('No response from Gemini');
     }
     
+    // Parse JSON response directly
     const extractedText = data.candidates[0].content.parts[0].text;
+    let parsedData;
+    try {
+      parsedData = JSON.parse(extractedText);
+    } catch (parseError) {
+      console.error('❌ Failed to parse Gemini JSON response:', parseError);
+      console.log('Raw response:', extractedText);
+      return [];
+    }
     
     console.log(`✅ Events extracted from GoodRec ${sportName}`);
     
+<<<<<<< HEAD
     // Parse the extracted text into event objects
     const events = parseEventsFromText(extractedText, 'GoodRec', url);
     
@@ -140,6 +186,25 @@ CRITICAL: Only include games in New York City. Filter out New Jersey and other c
              !location.includes('new jersey') && !location.includes('jersey city') &&
              !name.includes('new jersey') && !name.includes('jersey city');
     });
+=======
+    // Convert to event objects with consistent structure
+    const events = (parsedData.events || []).map(event => ({
+      name: event.name,
+      platform: 'GoodRec',
+      source: 'GoodRec',
+      link: url,
+      time: event.time,
+      location: event.location,
+      description: event.description || (event.format ? `${event.format} pickup soccer game` : 'Pickup soccer game'),
+      format: event.format || null,
+      price: null
+    }));
+    
+    if (events.length > 0) {
+      console.log(`   → Parsed ${events.length} events with source: ${events[0].source}`);
+    }
+    return events;
+>>>>>>> cc2ed5cc07f90f8867f11b44812197043179af4d
     
   } catch (error) {
     console.error(`❌ Error scraping GoodRec ${sportName}:`, error.message);
@@ -412,26 +477,17 @@ export async function scrapeLumaEvents(date = null) {
 Page content:
 ${pageText.substring(0, 5000)}${dateFilter}
 
-Extract each event with:
-- Event name
-- Date (e.g., "Friday, November 7, 2025")
-- Time (e.g., "5:30 PM")
-- Location (venue name and neighborhood)
-- Price if mentioned
-- Direct event URL if available
+${date && dateFormats.length > 0 ? `IMPORTANT: Only extract events for ${dateFormats[0]}. Skip all other dates.` : 'Extract all events found.'}
 
-Format each event as:
-Event Name
-Date & Time: [date] at [time]
-Location: [venue, neighborhood]
-Price: [price or "Check link"]
-Platform: Luma
-Link: [direct event URL or https://luma.com/nyc]
-Description: [brief description]
+For each event, extract:
+- name: Event name
+- time: Date and time combined (e.g., "Friday, November 7, 2025 at 5:30 PM")
+- location: Venue name and neighborhood
+- price: Price if mentioned, or null
+- link: Direct event URL if available in the content, or null
+- description: Brief description if available`;
 
-${date && dateFormats.length > 0 ? `IMPORTANT: Only show events for ${dateFormats[0]}. Skip all other dates.` : 'Show all events found.'}`;
-
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
     
     const response = await fetch(geminiUrl, {
       method: 'POST',
@@ -440,7 +496,31 @@ ${date && dateFormats.length > 0 ? `IMPORTANT: Only show events for ${dateFormat
         contents: [{
           role: 'user',
           parts: [{ text: prompt }]
-        }]
+        }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'object',
+            properties: {
+              events: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string', description: 'Event name' },
+                    time: { type: 'string', description: 'Date and time combined' },
+                    location: { type: 'string', description: 'Venue and neighborhood' },
+                    price: { type: 'string', description: 'Price if mentioned', nullable: true },
+                    link: { type: 'string', description: 'Direct event URL', nullable: true },
+                    description: { type: 'string', description: 'Brief description', nullable: true }
+                  },
+                  required: ['name', 'time', 'location']
+                }
+              }
+            },
+            required: ['events']
+          }
+        }
       })
     });
     
@@ -450,11 +530,35 @@ ${date && dateFormats.length > 0 ? `IMPORTANT: Only show events for ${dateFormat
       throw new Error('No response from Gemini');
     }
     
+    // Parse JSON response directly
     const extractedText = data.candidates[0].content.parts[0].text;
+    let parsedData;
+    try {
+      parsedData = JSON.parse(extractedText);
+    } catch (parseError) {
+      console.error('❌ Failed to parse Gemini JSON response:', parseError);
+      console.log('Raw response:', extractedText);
+      return [];
+    }
     
     console.log('✅ Events extracted from Luma');
     
-    return parseEventsFromText(extractedText, 'Luma', url);
+    // Convert to event objects with consistent structure
+    const events = (parsedData.events || []).map(event => ({
+      name: event.name,
+      platform: 'Luma',
+      source: 'Luma',
+      link: event.link && event.link.startsWith('http') ? event.link : url,
+      time: event.time,
+      location: event.location,
+      description: event.description || null,
+      price: event.price || null
+    }));
+    
+    if (events.length > 0) {
+      console.log(`   → Parsed ${events.length} events with source: ${events[0].source}`);
+    }
+    return events;
     
   } catch (error) {
     console.error('❌ Error scraping Luma:', error.message);
@@ -467,30 +571,53 @@ ${date && dateFormats.length > 0 ? `IMPORTANT: Only show events for ${dateFormat
 }
 
 /**
- * Parse events from Gemini-extracted text
- * @param {string} text - Text from Gemini
- * @param {string} platform - Platform name
- * @param {string} baseUrl - Base URL for links
- * @returns {Array} - Array of event objects
+ * Scrape Meetup.com NYC page using Puppeteer and extract events with Gemini
+ * @param {string} date - Date to search for (optional, format: "YYYY-MM-DD")
+ * @returns {Promise<Array>} - Array of extracted events
  */
-function parseEventsFromText(text, platform, baseUrl) {
-  const events = [];
-  const lines = text.split('\n');
-  
-  let currentEvent = null;
-  
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].trim();
+export async function scrapeMeetupEvents(date = null) {
+  let browser = null;
+  try {
+    console.log('🌐 Launching Puppeteer to scrape Meetup.com...');
     
-    if (!trimmed || trimmed === '---' || trimmed.startsWith('=====')) {
-      // Save current event if we hit a separator
-      if (currentEvent && currentEvent.name && currentEvent.name !== '**Event Name**') {
-        events.push(currentEvent);
-        currentEvent = null;
-      }
-      continue;
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1920, height: 1080 });
+    
+    // Meetup.com NYC events page
+    const url = 'https://www.meetup.com/find/?location=us--ny--new_york&source=EVENTS';
+    console.log('📄 Loading:', url);
+    
+    await page.goto(url, { 
+      waitUntil: 'networkidle2',
+      timeout: 30000 
+    });
+    
+    // Wait for events to load (Meetup uses React/dynamic loading)
+    await new Promise(resolve => setTimeout(resolve, 4000));
+    
+    // Scroll to load more events
+    await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight / 2);
+    });
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Get page text
+    const pageText = await page.evaluate(() => {
+      return document.body.innerText;
+    });
+    
+    console.log('✅ Page loaded, extracting events with Gemini...');
+    
+    if (!GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY not configured');
     }
     
+<<<<<<< HEAD
     // Detect event name - look for lines that look like titles (even with markdown **)
     if (!currentEvent && trimmed.length > 15 && 
         !trimmed.includes(':') && 
@@ -535,15 +662,120 @@ function parseEventsFromText(text, platform, baseUrl) {
         // Might be event name on next line
         currentEvent.name = trimmed.replace(/^\*\*|\*\*$/g, '').trim();
       }
+=======
+    // Format date for prompt
+    let dateFilter = '';
+    let dateFormats = [];
+    if (date) {
+      const targetDate = new Date(date);
+      dateFormats = [
+        targetDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+        targetDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), // "Nov 7"
+        date
+      ];
+      dateFilter = `\n\nCRITICAL: Only extract events that match ONE of these date formats: ${dateFormats.join(', ')}. Skip all other dates.`;
+    }
+    
+    const prompt = `Extract all NYC events from this Meetup.com page content.
+    
+Page content:
+${pageText.substring(0, 6000)}${dateFilter}
+
+${date && dateFormats.length > 0 ? `IMPORTANT: Only extract events for ${dateFormats[0]}. Skip all other dates.` : 'Extract all events found.'}
+
+Focus on tech meetups, social events, networking events, hobby groups, and community gatherings.
+
+For each event, extract:
+- name: Event name (e.g., "NYC Tech Networking Happy Hour", "Brooklyn Board Games Meetup")
+- time: Date and time combined (e.g., "Friday, November 7, 2025 at 6:30 PM")
+- location: Venue and neighborhood (e.g., "WeWork, Manhattan" or "Bryant Park")
+- price: Price (usually "Free" for Meetup events) if mentioned
+- link: Direct event URL if available in content, or null
+- description: Brief description from content`;
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
+    
+    const response = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          role: 'user',
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'object',
+            properties: {
+              events: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string', description: 'Event name' },
+                    time: { type: 'string', description: 'Date and time combined' },
+                    location: { type: 'string', description: 'Venue and neighborhood' },
+                    price: { type: 'string', description: 'Price (usually "Free")', nullable: true },
+                    link: { type: 'string', description: 'Direct event URL', nullable: true },
+                    description: { type: 'string', description: 'Brief description', nullable: true }
+                  },
+                  required: ['name', 'time', 'location']
+                }
+              }
+            },
+            required: ['events']
+          }
+        }
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (!data.candidates || !data.candidates[0]) {
+      throw new Error('No response from Gemini');
+    }
+    
+    // Parse JSON response directly
+    const extractedText = data.candidates[0].content.parts[0].text;
+    let parsedData;
+    try {
+      parsedData = JSON.parse(extractedText);
+    } catch (parseError) {
+      console.error('❌ Failed to parse Gemini JSON response:', parseError);
+      console.log('Raw response:', extractedText);
+      return [];
+    }
+    
+    console.log('✅ Events extracted from Meetup.com');
+    
+    // Convert to event objects with consistent structure
+    const events = (parsedData.events || []).map(event => ({
+      name: event.name,
+      platform: 'Meetup',
+      source: 'Meetup',
+      link: event.link && event.link.startsWith('http') ? event.link : url,
+      time: event.time,
+      location: event.location,
+      description: event.description || null,
+      price: event.price || 'Free'
+    }));
+    
+    if (events.length > 0) {
+      console.log(`   → Parsed ${events.length} events with source: ${events[0].source}`);
+    }
+    return events;
+    
+  } catch (error) {
+    console.error('❌ Error scraping Meetup.com:', error.message);
+    return [];
+  } finally {
+    if (browser) {
+      await browser.close();
+>>>>>>> cc2ed5cc07f90f8867f11b44812197043179af4d
     }
   }
-  
-  // Save last event
-  if (currentEvent && currentEvent.name && currentEvent.name !== '**Event Name**') {
-    events.push(currentEvent);
-  }
-  
-  // Filter out invalid events
-  return events.filter(e => e.name && e.name.length > 5 && e.name !== '**Event Name**');
 }
+
 

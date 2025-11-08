@@ -1,11 +1,161 @@
 import express from 'express';
 import { parseUserIntent, formatEventResponse, searchEventsWithAI } from '../services/geminiService.js';
-import { searchEventsWithPerplexity } from '../services/perplexityService.js';
+// import { searchEventsWithPerplexity } from '../services/perplexityService.js'; // COMMENTED OUT: Perplexity removed from search
 import { searchEventbriteEvents } from '../services/eventbriteService.js';
+<<<<<<< HEAD
 import { scrapeGoodRecEvents, scrapeGoodRecVolleyball, scrapeLumaEvents } from '../services/dynamicScraperService.js';
+=======
+import { scrapeGoodRecEvents, scrapeLumaEvents, scrapeMeetupEvents } from '../services/dynamicScraperService.js';
+>>>>>>> cc2ed5cc07f90f8867f11b44812197043179af4d
 import fetch from 'node-fetch';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const router = express.Router();
+
+/**
+ * Search for events using Gemini with web search enabled
+ * This is used as a fallback when no events are found from scrapers
+ */
+async function searchEventsWithGeminiWebSearch(userQuery, targetDate = null) {
+  try {
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    if (!GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY not configured');
+    }
+
+    // Build search query with date if provided
+    let searchQuery = userQuery;
+    if (targetDate) {
+      const dateStr = new Date(targetDate).toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      searchQuery = `${userQuery} on ${dateStr} in New York City`;
+    } else {
+      searchQuery = `${userQuery} in New York City`;
+    }
+
+    const prompt = `Search the web for real, upcoming events in New York City matching this query: "${searchQuery}"
+
+Find actual events with:
+- Event name
+- Date and time (specific date and time)
+- Venue/location (specific venue name and neighborhood)
+- Brief description
+- Direct event link/URL (registration or ticket URL)
+
+Focus on events from platforms like:
+- Eventbrite
+- Meetup
+- Luma
+- Dice.fm
+- Resident Advisor
+- Venue websites
+- Event listing sites
+
+Return the events in JSON format with this exact structure:
+{
+  "events": [
+    {
+      "name": "Event Name",
+      "time": "Date and time (e.g., 'Friday, November 7, 2025 at 6:30 PM')",
+      "location": "Venue name and neighborhood (e.g., 'WeWork Bryant Park, Midtown')",
+      "link": "Direct event URL",
+      "description": "Brief description",
+      "platform": "Platform name if known (Eventbrite, Meetup, etc.)",
+      "source": "Web Search"
+    }
+  ]
+}
+
+Only include real, verified events that are actually happening. If you can't find any events, return {"events": []}.`;
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
+    
+    const requestBody = {
+      contents: [{
+        role: 'user',
+        parts: [{ text: prompt }]
+      }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: {
+            events: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', description: 'Event name' },
+                  time: { type: 'string', description: 'Date and time' },
+                  location: { type: 'string', description: 'Venue and location' },
+                  link: { type: 'string', description: 'Direct event URL' },
+                  description: { type: 'string', description: 'Brief description', nullable: true },
+                  platform: { type: 'string', description: 'Platform name', nullable: true },
+                  source: { type: 'string', description: 'Source identifier' }
+                },
+                required: ['name', 'time', 'location', 'link', 'source']
+              }
+            }
+          },
+          required: ['events']
+        }
+      }
+    };
+
+    // Enable web search/grounding for Gemini 2.0 Flash
+    // Add googleSearchRetrieval tool to enable web search
+    requestBody.tools = [{
+      googleSearchRetrieval: {}
+    }];
+
+    const response = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+
+    const data = await response.json();
+    
+    if (!data.candidates || !data.candidates[0]) {
+      console.error('No response from Gemini web search');
+      return [];
+    }
+
+    // Parse JSON response
+    const extractedText = data.candidates[0].content.parts[0].text;
+    let parsedData;
+    try {
+      parsedData = JSON.parse(extractedText);
+    } catch (parseError) {
+      console.error('❌ Failed to parse Gemini web search JSON response:', parseError);
+      console.log('Raw response:', extractedText);
+      return [];
+    }
+
+    const events = (parsedData.events || []).map(event => ({
+      name: event.name,
+      platform: event.platform || 'Web Search',
+      source: event.source || 'Web Search',
+      link: event.link,
+      time: event.time,
+      location: event.location,
+      description: event.description || null,
+      price: null
+    }));
+
+    return events;
+
+  } catch (error) {
+    console.error('Error in Gemini web search:', error);
+    return [];
+  }
+}
 
 // Store conversation history per session (in-memory for now)
 // Key: sessionId, Value: array of messages
@@ -70,14 +220,22 @@ router.post('/chat', async (req, res) => {
     const messageLower = message.toLowerCase();
     const isEventQuery = eventKeywords.some(keyword => messageLower.includes(keyword));
 
-    let eventData = null;
+    // COMMENTED OUT: Perplexity variables
+    // let eventData = null; // Perplexity API response
+    // let perplexityContext = ''; // Context from Perplexity API
+    
     let eventbriteEvents = null;
     let dynamicEvents = null; // Events from Puppeteer scraping
-    let perplexityContext = '';
+    let eventContext = '';
 
+    // If user is asking about events, use web scraping approach:
+    // Puppeteer + Gemini for dynamic platforms (GoodRec, Luma, Meetup)
+    
+    // COMMENTED OUT: Previous Perplexity search approach
     // If user is asking about events, use HYBRID approach:
     // 1. Perplexity for indexable platforms (Meetup, Eventbrite)
     // 2. Puppeteer + Gemini for dynamic platforms (GoodRec, Luma)
+    
     if (isEventQuery) {
       // Extract date from query if mentioned
       let targetDate = null;
@@ -209,32 +367,93 @@ router.post('/chat', async (req, res) => {
                        (!explicitlyGoodRec && !isVolleyball && !queryLower.includes('football') && !queryLower.includes('soccer') && 
                         !queryLower.includes('pickup') && !queryLower.includes('sport'));
       
-      // HYBRID APPROACH: Use both Perplexity and Puppeteer
+      // COMMENTED OUT: Perplexity API search
+      // // 1. Perplexity for indexable platforms (Meetup, Eventbrite, general search)
+      // if (process.env.PERPLEXITY_API_KEY) {
+      //   searchPromises.push(
+      //     (async () => {
+      //       try {
+      //         console.log('🔍 [DATA SOURCE: PERPLEXITY API] Starting search for indexable platforms...');
+      //         console.log(`   → Query: "${message}"`);
+      //         console.log(`   → Target Date: ${targetDateStr}`);
+      //         const recentUserMessages = recentHistory
+      //           .filter(msg => msg.role === 'user')
+      //           .slice(-3)
+      //           .map(msg => msg.content)
+      //           .join('; ');
+      //         
+      //         eventData = await searchEventsWithPerplexity(message, recentUserMessages);
+      //         console.log(`✅ [DATA SOURCE: PERPLEXITY API] Search complete`);
+      //         console.log(`   → Found ${eventData.citations?.length || 0} citation sources`);
+      //         console.log(`   → Content length: ${eventData.content?.length || 0} characters`);
+      //         if (eventData.citations && eventData.citations.length > 0) {
+      //           console.log(`   → Citation URLs:`, eventData.citations.slice(0, 3).join(', '), eventData.citations.length > 3 ? '...' : '');
+      //         }
+      //         return eventData;
+      //       } catch (error) {
+      //         console.error('❌ [DATA SOURCE: PERPLEXITY API] Failed:', error.message);
+      //         return null;
+      //       }
+      //     })()
+      //   );
+      // } else {
+      //   console.log('⚠️ [DATA SOURCE: PERPLEXITY API] Skipped - API key not configured');
+      // }
+      
+      // Search ALL primary platforms: Eventbrite, GoodRec, Luma, Meetup
+      // These are the primary data sources, Gemini web search is fallback
       const searchPromises = [];
       
-      // 1. Perplexity for indexable platforms (Meetup, Eventbrite, general search)
-      if (process.env.PERPLEXITY_API_KEY) {
+      // 1. Eventbrite API
+      if (process.env.EVENTBRITE_API_KEY) {
         searchPromises.push(
           (async () => {
             try {
-              console.log('🔍 [Hybrid] Searching Perplexity for indexable platforms...');
-              const recentUserMessages = recentHistory
-                .filter(msg => msg.role === 'user')
-                .slice(-3)
-                .map(msg => msg.content)
-                .join('; ');
-              
-              eventData = await searchEventsWithPerplexity(message, recentUserMessages);
-              console.log(`✅ [Hybrid] Perplexity found ${eventData.citations?.length || 0} sources`);
-              return eventData;
+              console.log('🎫 [DATA SOURCE: EVENTBRITE API] Starting search...');
+              console.log(`   → Target Date: ${targetDateStr}`);
+              const eventbriteResults = await searchEventbriteEvents(message, targetDateStr);
+              console.log(`✅ [DATA SOURCE: EVENTBRITE API] Search complete`);
+              console.log(`   → Found ${eventbriteResults.length} events`);
+              if (eventbriteResults.length > 0) {
+                console.log(`   → Sample events:`, eventbriteResults.slice(0, 2).map(e => e.name).join(', '));
+              }
+              return { platform: 'Eventbrite', events: eventbriteResults };
             } catch (error) {
-              console.error('⚠️ [Hybrid] Perplexity failed:', error.message);
+              console.error('❌ [DATA SOURCE: EVENTBRITE API] Failed:', error.message);
+              return null;
+            }
+          })()
+        );
+      } else {
+        console.log('⚠️ [DATA SOURCE: EVENTBRITE API] Skipped - API key not configured');
+      }
+      
+      // 2. GoodRec scraper (always search unless Luma is explicitly requested)
+      if (!explicitlyLuma) {
+        searchPromises.push(
+          (async () => {
+            try {
+              console.log('🌐 [DATA SOURCE: GOODREC SCRAPER] Starting Puppeteer scraping...');
+              console.log(`   → Target Date: ${targetDateStr}`);
+              console.log(`   → Reason: ${explicitlyGoodRec ? 'Explicitly requested' : 'Auto-search (all platforms)'}`);
+              const goodRecEvents = await scrapeGoodRecEvents(targetDateStr);
+              console.log(`✅ [DATA SOURCE: GOODREC SCRAPER] Scraping complete`);
+              console.log(`   → Found ${goodRecEvents.length} events`);
+              if (goodRecEvents.length > 0) {
+                console.log(`   → Sample events:`, goodRecEvents.slice(0, 2).map(e => e.name).join(', '));
+                console.log(`   → All events have platform: ${goodRecEvents.every(e => e.platform === 'GoodRec')}`);
+                console.log(`   → Source tracking: ${goodRecEvents[0].source || 'Not set'}`);
+              }
+              return { platform: 'GoodRec', events: goodRecEvents };
+            } catch (error) {
+              console.error('❌ [DATA SOURCE: GOODREC SCRAPER] Failed:', error.message);
               return null;
             }
           })()
         );
       }
       
+<<<<<<< HEAD
       // 2. Puppeteer + Gemini for dynamic platforms (GoodRec Soccer, GoodRec Volleyball, Luma)
       if (needsGoodRec || needsGoodRecVolleyball || needsLuma) {
         if (needsGoodRecVolleyball) {
@@ -262,93 +481,156 @@ router.post('/chat', async (req, res) => {
               } catch (error) {
                 console.error('⚠️ [Hybrid] GoodRec Soccer scraping failed:', error.message);
                 return null;
+=======
+      // 3. Luma scraper (always search unless GoodRec is explicitly requested)
+      if (!explicitlyGoodRec) {
+        searchPromises.push(
+          (async () => {
+            try {
+              console.log('🌐 [DATA SOURCE: LUMA SCRAPER] Starting Puppeteer scraping...');
+              console.log(`   → Target Date: ${targetDateStr}`);
+              console.log(`   → Reason: ${explicitlyLuma ? 'Explicitly requested' : 'Auto-search (all platforms)'}`);
+              const lumaEvents = await scrapeLumaEvents(targetDateStr);
+              console.log(`✅ [DATA SOURCE: LUMA SCRAPER] Scraping complete`);
+              console.log(`   → Found ${lumaEvents.length} events`);
+              if (lumaEvents.length > 0) {
+                console.log(`   → Sample events:`, lumaEvents.slice(0, 2).map(e => e.name).join(', '));
+                console.log(`   → All events have platform: ${lumaEvents.every(e => e.platform === 'Luma')}`);
+                console.log(`   → Source tracking: ${lumaEvents[0].source || 'Not set'}`);
+>>>>>>> cc2ed5cc07f90f8867f11b44812197043179af4d
               }
-            })()
-          );
-        }
-        
-        if (needsLuma) {
-          searchPromises.push(
-            (async () => {
-              try {
-                console.log('🌐 [Hybrid] Scraping Luma with Puppeteer...');
-                const lumaEvents = await scrapeLumaEvents(targetDateStr);
-                console.log(`✅ [Hybrid] Luma scraping found ${lumaEvents.length} events`);
-                return { platform: 'Luma', events: lumaEvents };
-              } catch (error) {
-                console.error('⚠️ [Hybrid] Luma scraping failed:', error.message);
-                return null;
-              }
-            })()
-          );
-        }
+              return { platform: 'Luma', events: lumaEvents };
+            } catch (error) {
+              console.error('❌ [DATA SOURCE: LUMA SCRAPER] Failed:', error.message);
+              return null;
+            }
+          })()
+        );
       }
       
+      // 4. Meetup scraper (always search all platforms)
+      searchPromises.push(
+        (async () => {
+          try {
+            console.log('🌐 [DATA SOURCE: MEETUP SCRAPER] Starting Puppeteer scraping...');
+            console.log(`   → Target Date: ${targetDateStr}`);
+            const meetupEvents = await scrapeMeetupEvents(targetDateStr);
+            console.log(`✅ [DATA SOURCE: MEETUP SCRAPER] Scraping complete`);
+            console.log(`   → Found ${meetupEvents.length} events`);
+            if (meetupEvents.length > 0) {
+              console.log(`   → Sample events:`, meetupEvents.slice(0, 2).map(e => e.name).join(', '));
+              console.log(`   → Source tracking: ${meetupEvents[0].source || 'Not set'}`);
+            }
+            return { platform: 'Meetup', events: meetupEvents };
+          } catch (error) {
+            console.error('❌ [DATA SOURCE: MEETUP SCRAPER] Failed:', error.message);
+            return null;
+          }
+        })()
+      );
+      
       // Run all searches in parallel
+      console.log(`\n⚡ [PARALLEL EXECUTION] Running ${searchPromises.length} data source(s) simultaneously...`);
       const results = await Promise.allSettled(searchPromises);
+      console.log(`✅ [PARALLEL EXECUTION] All searches completed\n`);
       
       // Combine results
+      console.log('📦 [DATA AGGREGATION] Combining results from all sources...');
       dynamicEvents = [];
       results.forEach((result, index) => {
         if (result.status === 'fulfilled' && result.value) {
           if (result.value.platform) {
             // Puppeteer result
+            console.log(`   → Adding ${result.value.events.length} events from ${result.value.platform}`);
             dynamicEvents.push(...result.value.events);
           }
+        } else if (result.status === 'rejected') {
+          console.log(`   → Source ${index + 1} rejected:`, result.reason?.message || 'Unknown error');
         }
       });
+      console.log(`✅ [DATA AGGREGATION] Total events from platforms: ${dynamicEvents.length}`);
       
-      // Build context from all sources
+      // Build context from event data
       let combinedContext = '';
       
-      // Add Perplexity results
-      if (eventData) {
-        const citationUrls = eventData.citations?.map((url, idx) => `[${idx + 1}] ${url}`).join('\n') || 'No URLs found';
-        combinedContext += `\n\n===== REAL EVENT DATA FROM PERPLEXITY API (indexable platforms: Eventbrite.com, Meetup, etc.) =====\n${eventData.content}\n\n===== SOURCE URLS (USE THESE EXACT LINKS) =====\n${citationUrls}\n\n`;
-      }
+      // COMMENTED OUT: Perplexity results context building
+      // // Add Perplexity results
+      // if (eventData) {
+      //   const citationUrls = eventData.citations?.map((url, idx) => `[${idx + 1}] ${url}`).join('\n') || 'No URLs found';
+      //   combinedContext += `\n\n===== REAL EVENT DATA FROM PERPLEXITY API (indexable platforms: Eventbrite.com, Meetup, etc.) =====\n${eventData.content}\n\n===== SOURCE URLS (USE THESE EXACT LINKS) =====\n${citationUrls}\n\n`;
+      // }
       
-      // Add Puppeteer results
+      // Add event data from platforms
       if (dynamicEvents && dynamicEvents.length > 0) {
         const dynamicData = dynamicEvents.map(e => 
-          `${e.name}\nDate & Time: ${e.time || 'TBD'}\nLocation: ${e.location || 'TBD'}\nPlatform: ${e.platform}\nLink: ${e.link}\nDescription: ${e.description || ''}`
+          `${e.name}\nDate & Time: ${e.time || 'TBD'}\nLocation: ${e.location || 'TBD'}\nPlatform: ${e.platform}\nSource: ${e.source || e.platform}\nLink: ${e.link}\nDescription: ${e.description || ''}`
         ).join('\n\n---\n\n');
         
-        combinedContext += `\n\n===== REAL EVENT DATA FROM PUPPETEER SCRAPING (dynamic platforms: GoodRec, Luma) =====\n${dynamicData}\n\nIMPORTANT: These events were extracted from dynamically loaded pages. Use the exact event names, times, locations, and links shown above.`;
+        combinedContext += `\n\n===== REAL EVENT DATA (platforms: Eventbrite, GoodRec, Luma, Meetup) =====\n${dynamicData}\n\nIMPORTANT: These events were extracted from real platforms. Use the exact event names, times, locations, platforms, sources, and links shown above.`;
       }
       
-      perplexityContext = combinedContext || perplexityContext;
+      eventContext = combinedContext || eventContext;
       
-      console.log(`✅ [Hybrid] Total events found: Perplexity=${eventData?.citations?.length || 0} sources, Puppeteer=${dynamicEvents.length} events`);
+      // COMMENTED OUT: Previous logging with Perplexity
+      // console.log(`✅ [Hybrid] Total events found: Perplexity=${eventData?.citations?.length || 0} sources, Puppeteer=${dynamicEvents.length} events`);
+      console.log(`✅ Total events found: ${dynamicEvents.length} events`);
+      
+      // If no events found from scrapers, use Gemini web search as fallback
+      if (!dynamicEvents || dynamicEvents.length === 0) {
+        console.log('🔍 No events found from scrapers, using Gemini web search...');
+        try {
+          const webSearchEvents = await searchEventsWithGeminiWebSearch(message, targetDateStr);
+          if (webSearchEvents && webSearchEvents.length > 0) {
+            console.log(`✅ Found ${webSearchEvents.length} events from Gemini web search`);
+            
+            // Format web search events for context
+            const webSearchData = webSearchEvents.map(e => 
+              `${e.name}\nDate & Time: ${e.time || 'TBD'}\nLocation: ${e.location || 'TBD'}\nPlatform: ${e.platform || 'Web Search'}\nSource: ${e.source || 'Web Search'}\nLink: ${e.link}\nDescription: ${e.description || ''}`
+            ).join('\n\n---\n\n');
+            
+            combinedContext += `\n\n===== EVENT DATA FROM WEB SEARCH =====\n${webSearchData}\n\nIMPORTANT: These events were found via web search. Use the exact event names, times, locations, and links shown above.`;
+            eventContext = combinedContext;
+            dynamicEvents = webSearchEvents; // Add to dynamicEvents for response
+          }
+        } catch (error) {
+          console.error('❌ Error in Gemini web search:', error.message);
+        }
+      }
     }
 
     // Build conversation for Gemini API with NYC Event AI personality
     const systemInstruction = `You are NYC Event AI, a friendly and conversational city assistant built to help people instantly find what's happening today in New York City — from concerts, sports, and tech meetups to date ideas, parties, art shows, and pop-up events. Your goal is to make discovering and planning a fun day or night in NYC simple and personal, like chatting with a local friend who knows what's going on around the city.
 
 CRITICAL RULES - READ CAREFULLY:
-1. You will receive event data from Perplexity API below with SOURCE URLS
-2. DO NOT make up events - ONLY use events from the Perplexity data
+1. You will receive event data from platforms (Eventbrite, GoodRec, Luma, Meetup) or web search below
+2. DO NOT make up events - ONLY use events from the provided data
 3. DO NOT write "Not Available" or "Location not specified" - skip events without info
-4. USE THE EXACT URLs from the "SOURCE URLS" section - DO NOT modify or shorten them
-5. If Perplexity data has no events or no URLs, say: "I couldn't find verified events right now. Try being more specific or check Eventbrite/Luma directly."
+4. USE THE EXACT URLs from the event data - DO NOT modify or shorten them
+5. If the data has no events, say: "I couldn't find verified events right now. Try being more specific or check the platforms directly."
+6. Events from web search are also valid - use them just like events from platforms
 
-When Perplexity provides event data, format it like this:
+When event data is provided, format it like this:
 
-Event Name (from Perplexity data)
-🕓 Date & Time (from Perplexity data)
-📍 Venue & Location (from Perplexity data)
-💰 Price (from Perplexity data, or "RSVP to check" if missing)
-💡 Brief description (from Perplexity data)
-🔗 [EXACT URL from SOURCE URLS list]
+Event Name (from event data)
+🕓 Date & Time
+📍 Venue & Location (from event data)
+💰 Price (from event data, or "RSVP to check" if missing)
+💡 Brief description (from event data)
+Platform: [Platform name - Eventbrite, GoodRec, Luma, Meetup, or platform from web search]
+Source: [Source info - e.g., "Eventbrite", "GoodRec", "Luma", "Meetup", "Web Search"]
+🔗 [EXACT URL from event data]
 
-Example - if Perplexity says "AI Meetup at WeWork on Nov 5" with source URL https://lu.ma/ai-meetup:
+Example - if event data shows "AI Meetup at WeWork on Nov 5" with source URL https://lu.ma/ai-meetup:
 AI Meetup
 🕓 Nov 5, 6:30 PM
 📍 WeWork Bryant Park, Midtown
 💰 Free
 💡 Network with AI engineers and founders
+Platform: Luma
+Source: Luma
 🔗 https://lu.ma/ai-meetup
 
-DO NOT INVENT EVENTS. ONLY USE DATA FROM PERPLEXITY. ONLY USE URLs FROM SOURCE URLS LIST.
+DO NOT INVENT EVENTS. ONLY USE DATA FROM THE PROVIDED SOURCES. ONLY USE URLs FROM THE EVENT DATA.
 
 Always prioritize showing today's or tonight's events unless the user asks for another date. If real event data is provided, use it directly. If no events exactly match, offer close alternatives or similar experiences. 
 
@@ -360,7 +642,7 @@ Focus on quality over quantity — never show past events or raw data. Don't use
 
 Your tone should always feel personal, urban, and friendly — like you actually live in NYC and know what's going on. You are not just a search engine — you're a companion that helps plan real experiences in the city, using up-to-date event data from APIs and web sources.
 
-Remember the conversation history and build on what the user has asked before.${perplexityContext}`;
+Remember the conversation history and build on what the user has asked before.${eventContext}`;
 
     // Convert to Gemini API format
     const contents = [];
@@ -394,14 +676,18 @@ Remember the conversation history and build on what the user has asked before.${
     }
 
     console.log(`🧠 Context: ${recentHistory.length} messages in history`);
-    if (eventData) {
-      console.log('📊 Using real event data from Perplexity');
+    // COMMENTED OUT: Perplexity logging
+    // if (eventData) {
+    //   console.log('📊 Using real event data from Perplexity');
+    // }
+    if (dynamicEvents && dynamicEvents.length > 0) {
+      console.log(`📊 Using real event data: ${dynamicEvents.length} events`);
     }
     console.log('🤖 Asking Gemini to format response...');
 
     // Call Gemini API
     const key = process.env.GEMINI_API_KEY;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`;
     
     const body = { contents };
 
@@ -431,9 +717,10 @@ Remember the conversation history and build on what the user has asked before.${
       reply: reply.trim(),
       sessionId: sessionId,
       historyLength: session.history.length,
-      citations: eventData?.citations || [], // Include citations from Perplexity
+      // COMMENTED OUT: Perplexity citations
+      // citations: eventData?.citations || [], // Include citations from Perplexity
       eventbriteEvents: eventbriteEvents || [], // Include Eventbrite events
-      dynamicEvents: dynamicEvents || [] // Include events from Puppeteer scraping (GoodRec, Luma)
+      dynamicEvents: dynamicEvents || [] // Include events from Puppeteer scraping (GoodRec, Luma, Meetup)
     });
 
   } catch (error) {
