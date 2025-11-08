@@ -2,7 +2,7 @@ import express from 'express';
 import { parseUserIntent, formatEventResponse, searchEventsWithAI } from '../services/geminiService.js';
 import { searchEventsWithPerplexity } from '../services/perplexityService.js';
 import { searchEventbriteEvents } from '../services/eventbriteService.js';
-import { scrapeGoodRecEvents, scrapeLumaEvents } from '../services/dynamicScraperService.js';
+import { scrapeGoodRecEvents, scrapeGoodRecVolleyball, scrapeLumaEvents } from '../services/dynamicScraperService.js';
 import fetch from 'node-fetch';
 
 const router = express.Router();
@@ -191,19 +191,22 @@ router.post('/chat', async (req, res) => {
       targetDateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
       console.log(`📅 Target date detected: ${targetDateStr} (${targetDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })})`);
       
-      // Check if query mentions GoodRec or pickup soccer/football
+      // Check if query mentions GoodRec or pickup soccer/football/volleyball
       const queryLower = message.toLowerCase();
       const explicitlyGoodRec = queryLower.includes('goodrec');
       const explicitlyLuma = queryLower.includes('luma');
+      const isVolleyball = queryLower.includes('volleyball') || queryLower.includes('volley');
       
       // If user explicitly asks for a platform, only use that platform
       // Otherwise, use smart detection
       const needsGoodRec = explicitlyGoodRec || 
-                          (!explicitlyLuma && (queryLower.includes('football') || queryLower.includes('soccer') || 
-                          queryLower.includes('sport') || queryLower.includes('play') ||
-                          queryLower.includes('pickup')));
+                          (!explicitlyLuma && !isVolleyball && (queryLower.includes('football') || queryLower.includes('soccer') || 
+                          (queryLower.includes('sport') && !queryLower.includes('volleyball')) || 
+                          (queryLower.includes('play') && !queryLower.includes('volleyball')) ||
+                          (queryLower.includes('pickup') && !queryLower.includes('volleyball'))));
+      const needsGoodRecVolleyball = isVolleyball || (explicitlyGoodRec && queryLower.includes('volleyball'));
       const needsLuma = explicitlyLuma || 
-                       (!explicitlyGoodRec && !queryLower.includes('football') && !queryLower.includes('soccer') && 
+                       (!explicitlyGoodRec && !isVolleyball && !queryLower.includes('football') && !queryLower.includes('soccer') && 
                         !queryLower.includes('pickup') && !queryLower.includes('sport'));
       
       // HYBRID APPROACH: Use both Perplexity and Puppeteer
@@ -232,18 +235,32 @@ router.post('/chat', async (req, res) => {
         );
       }
       
-      // 2. Puppeteer + Gemini for dynamic platforms (GoodRec, Luma)
-      if (needsGoodRec || needsLuma) {
-        if (needsGoodRec) {
+      // 2. Puppeteer + Gemini for dynamic platforms (GoodRec Soccer, GoodRec Volleyball, Luma)
+      if (needsGoodRec || needsGoodRecVolleyball || needsLuma) {
+        if (needsGoodRecVolleyball) {
           searchPromises.push(
             (async () => {
               try {
-                console.log('🌐 [Hybrid] Scraping GoodRec with Puppeteer...');
+                console.log('🌐 [Hybrid] Scraping GoodRec Volleyball (NYC only) with Puppeteer...');
+                const volleyballEvents = await scrapeGoodRecVolleyball(targetDateStr);
+                console.log(`✅ [Hybrid] GoodRec Volleyball scraping found ${volleyballEvents.length} events (NYC only)`);
+                return { platform: 'GoodRec', events: volleyballEvents };
+              } catch (error) {
+                console.error('⚠️ [Hybrid] GoodRec Volleyball scraping failed:', error.message);
+                return null;
+              }
+            })()
+          );
+        } else if (needsGoodRec) {
+          searchPromises.push(
+            (async () => {
+              try {
+                console.log('🌐 [Hybrid] Scraping GoodRec Soccer with Puppeteer...');
                 const goodRecEvents = await scrapeGoodRecEvents(targetDateStr);
-                console.log(`✅ [Hybrid] GoodRec scraping found ${goodRecEvents.length} events`);
+                console.log(`✅ [Hybrid] GoodRec Soccer scraping found ${goodRecEvents.length} events`);
                 return { platform: 'GoodRec', events: goodRecEvents };
               } catch (error) {
-                console.error('⚠️ [Hybrid] GoodRec scraping failed:', error.message);
+                console.error('⚠️ [Hybrid] GoodRec Soccer scraping failed:', error.message);
                 return null;
               }
             })()

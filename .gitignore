@@ -46,3 +46,7 @@ build/
 *.temp
 .cache/
 
+# Scraped data
+nyc-events.json
+events.json
+

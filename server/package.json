@@ -11,7 +11,9 @@
     "test:gemini": "node test-gemini.js",
     "test:perplexity": "node test-perplexity.js",
     "test:eventbrite": "node test-eventbrite.js",
-    "test:hybrid": "node test-hybrid-scraper.js"
+    "test:hybrid": "node test-hybrid-scraper.js",
+    "scrape:nyc": "node scripts/scrapeNYCEvents.js",
+    "scrape:schedule": "node scripts/scheduleScraper.js"
   },
   "keywords": [
     "instagram",
@@ -30,6 +32,7 @@
     "dotenv": "^16.6.1",
     "express": "^4.18.2",
     "mongoose": "^8.0.3",
+    "node-cron": "^3.0.3",
     "node-fetch": "^3.3.2",
     "puppeteer": "^24.28.0"
   },
