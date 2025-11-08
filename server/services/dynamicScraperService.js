@@ -78,31 +78,6 @@ CRITICAL: ONLY extract games in New York City, New York. Skip any games in New J
 Page content:
 ${pageText.substring(0, 8000)}${dateFilter}
 
-<<<<<<< HEAD
-Extract each game with:
-- Event name (e.g., "CO-ED Pickup ${sportName} In [Location]")
-- Date (e.g., "Friday, August 1, 2025")
-- Time (e.g., "04:00 PM" or "4:00 PM")
-- Location (e.g., "Greenpoint, Brooklyn" or venue name)
-- Duration if mentioned (e.g., "120 minutes")
-- Format if mentioned (e.g., "5v5", "9v9", "11v11")
-- Skill level if mentioned (Social, Intermediate, High Intermediate, Advanced)
-
-Format each event as:
-Event Name
-Date & Time: [date] at [time]
-Location: [location, New York City]
-Duration: [duration if available]
-Format: [format if available]
-Platform: GoodRec
-Link: ${url}
-Description: ${sportName.toLowerCase()} game in NYC
-
-${date && dateFormats.length > 0 ? `IMPORTANT: Only show games for ${dateFormats[0]}. Skip all other dates.` : 'Show all games found.'}
-CRITICAL: Only include games in New York City. Filter out New Jersey and other cities.`;
-
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
-=======
 ${date && dateFormats.length > 0 ? `IMPORTANT: Only extract games for ${dateFormats[0]}. Skip all other dates.` : 'Extract all games found.'}
 
 For each game, extract:
@@ -113,7 +88,6 @@ For each game, extract:
 - description: Brief description (e.g., "9v9 pickup soccer game")`;
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
->>>>>>> cc2ed5cc07f90f8867f11b44812197043179af4d
     
     const response = await fetch(geminiUrl, {
       method: 'POST',
@@ -168,25 +142,6 @@ For each game, extract:
     
     console.log(`✅ Events extracted from GoodRec ${sportName}`);
     
-<<<<<<< HEAD
-    // Parse the extracted text into event objects
-    const events = parseEventsFromText(extractedText, 'GoodRec', url);
-    
-    // Filter to ensure only NYC events (double-check)
-    return events.filter(event => {
-      const location = (event.location || '').toLowerCase();
-      const name = (event.name || '').toLowerCase();
-      // Include NYC, Brooklyn, Manhattan, Queens, Bronx, Staten Island
-      // Exclude New Jersey, Jersey City, etc.
-      return (location.includes('new york') || location.includes('brooklyn') || 
-              location.includes('manhattan') || location.includes('queens') || 
-              location.includes('bronx') || location.includes('staten island') ||
-              name.includes('brooklyn') || name.includes('manhattan') || 
-              name.includes('queens') || name.includes('bronx')) &&
-             !location.includes('new jersey') && !location.includes('jersey city') &&
-             !name.includes('new jersey') && !name.includes('jersey city');
-    });
-=======
     // Convert to event objects with consistent structure
     const events = (parsedData.events || []).map(event => ({
       name: event.name,
@@ -200,11 +155,31 @@ For each game, extract:
       price: null
     }));
     
+    const filteredEvents = events.filter(event => {
+      const location = (event.location || '').toLowerCase();
+      const name = (event.name || '').toLowerCase();
+      return (
+        location.includes('new york') ||
+        location.includes('brooklyn') ||
+        location.includes('manhattan') ||
+        location.includes('queens') ||
+        location.includes('bronx') ||
+        location.includes('staten island') ||
+        name.includes('brooklyn') ||
+        name.includes('manhattan') ||
+        name.includes('queens') ||
+        name.includes('bronx')
+      ) &&
+      !location.includes('new jersey') &&
+      !location.includes('jersey city') &&
+      !name.includes('new jersey') &&
+      !name.includes('jersey city');
+    });
+    
     if (events.length > 0) {
       console.log(`   → Parsed ${events.length} events with source: ${events[0].source}`);
     }
-    return events;
->>>>>>> cc2ed5cc07f90f8867f11b44812197043179af4d
+    return filteredEvents;
     
   } catch (error) {
     console.error(`❌ Error scraping GoodRec ${sportName}:`, error.message);
@@ -579,91 +554,40 @@ export async function scrapeMeetupEvents(date = null) {
   let browser = null;
   try {
     console.log('🌐 Launching Puppeteer to scrape Meetup.com...');
-    
+
     browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
-    
+
     const page = await browser.newPage();
     await page.setViewport({ width: 1920, height: 1080 });
-    
-    // Meetup.com NYC events page
+
     const url = 'https://www.meetup.com/find/?location=us--ny--new_york&source=EVENTS';
     console.log('📄 Loading:', url);
-    
-    await page.goto(url, { 
+
+    await page.goto(url, {
       waitUntil: 'networkidle2',
-      timeout: 30000 
+      timeout: 30000
     });
-    
-    // Wait for events to load (Meetup uses React/dynamic loading)
+
     await new Promise(resolve => setTimeout(resolve, 4000));
-    
-    // Scroll to load more events
+
     await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight / 2);
     });
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Get page text
+
     const pageText = await page.evaluate(() => {
       return document.body.innerText;
     });
-    
+
     console.log('✅ Page loaded, extracting events with Gemini...');
-    
+
     if (!GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY not configured');
     }
-    
-<<<<<<< HEAD
-    // Detect event name - look for lines that look like titles (even with markdown **)
-    if (!currentEvent && trimmed.length > 15 && 
-        !trimmed.includes(':') && 
-        !trimmed.match(/^(Date|Time|Location|Platform|Link|Description|Format|Price|Duration)/i) &&
-        !trimmed.match(/^(Pickup|Games|Events|Here are)/i)) {
-      // Remove markdown formatting
-      const cleanName = trimmed.replace(/^\*\*|\*\*$/g, '').trim();
-      if (cleanName.length > 15) {
-        currentEvent = {
-          name: cleanName,
-          platform: platform,
-          link: baseUrl,
-          time: null,
-          location: null,
-          description: null,
-          price: null
-        };
-      }
-    } else if (currentEvent) {
-      // Parse event details
-      if (trimmed.match(/Date & Time:|Time:/i)) {
-        currentEvent.time = trimmed.replace(/Date & Time:|Time:/i, '').trim().replace(/\*\*\*/g, '').trim();
-      } else if (trimmed.match(/Location:/i)) {
-        currentEvent.location = trimmed.replace(/Location:/i, '').trim().replace(/\*\*\*/g, '').trim();
-      } else if (trimmed.match(/Link:/i)) {
-        const link = trimmed.replace(/Link:/i, '').trim();
-        if (link && link.startsWith('http')) {
-          currentEvent.link = link;
-        }
-      } else if (trimmed.match(/Description:/i)) {
-        currentEvent.description = trimmed.replace(/Description:/i, '').trim();
-      } else if (trimmed.match(/Price:/i)) {
-        currentEvent.price = trimmed.replace(/Price:/i, '').trim();
-      } else if (trimmed.match(/Format:/i)) {
-        currentEvent.format = trimmed.replace(/Format:/i, '').trim();
-        if (!currentEvent.description) {
-          currentEvent.description = `${currentEvent.format} pickup soccer game`;
-        }
-      } else if (trimmed.match(/Duration:/i)) {
-        currentEvent.duration = trimmed.replace(/Duration:/i, '').trim();
-      } else if (trimmed.length > 10 && !trimmed.includes(':') && !currentEvent.name) {
-        // Might be event name on next line
-        currentEvent.name = trimmed.replace(/^\*\*|\*\*$/g, '').trim();
-      }
-=======
-    // Format date for prompt
+
     let dateFilter = '';
     let dateFormats = [];
     if (date) {
@@ -671,31 +595,16 @@ export async function scrapeMeetupEvents(date = null) {
       dateFormats = [
         targetDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
         targetDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-        targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), // "Nov 7"
+        targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         date
       ];
       dateFilter = `\n\nCRITICAL: Only extract events that match ONE of these date formats: ${dateFormats.join(', ')}. Skip all other dates.`;
     }
-    
-    const prompt = `Extract all NYC events from this Meetup.com page content.
-    
-Page content:
-${pageText.substring(0, 6000)}${dateFilter}
 
-${date && dateFormats.length > 0 ? `IMPORTANT: Only extract events for ${dateFormats[0]}. Skip all other dates.` : 'Extract all events found.'}
-
-Focus on tech meetups, social events, networking events, hobby groups, and community gatherings.
-
-For each event, extract:
-- name: Event name (e.g., "NYC Tech Networking Happy Hour", "Brooklyn Board Games Meetup")
-- time: Date and time combined (e.g., "Friday, November 7, 2025 at 6:30 PM")
-- location: Venue and neighborhood (e.g., "WeWork, Manhattan" or "Bryant Park")
-- price: Price (usually "Free" for Meetup events) if mentioned
-- link: Direct event URL if available in content, or null
-- description: Brief description from content`;
+    const prompt = `Extract all NYC events from this Meetup.com page content. \n\nPage content:\n${pageText.substring(0, 6000)}${dateFilter}\n\n${date && dateFormats.length > 0 ? `IMPORTANT: Only extract events for ${dateFormats[0]}. Skip all other dates.` : 'Extract all events found.'}\n\nFocus on tech meetups, social events, networking events, hobby groups, and community gatherings.\n\nFor each event, extract:\n- name: Event name (e.g., "NYC Tech Networking Happy Hour", "Brooklyn Board Games Meetup")\n- time: Date and time combined (e.g., "Friday, November 7, 2025 at 6:30 PM")\n- location: Venue and neighborhood (e.g., "WeWork, Manhattan" or "Bryant Park")\n- price: Price (usually "Free" for Meetup events) if mentioned\n- link: Direct event URL if available in content, or null\n- description: Brief description from content`;
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
-    
+
     const response = await fetch(geminiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -730,14 +639,13 @@ For each event, extract:
         }
       })
     });
-    
+
     const data = await response.json();
-    
+
     if (!data.candidates || !data.candidates[0]) {
       throw new Error('No response from Gemini');
     }
-    
-    // Parse JSON response directly
+
     const extractedText = data.candidates[0].content.parts[0].text;
     let parsedData;
     try {
@@ -747,10 +655,9 @@ For each event, extract:
       console.log('Raw response:', extractedText);
       return [];
     }
-    
+
     console.log('✅ Events extracted from Meetup.com');
-    
-    // Convert to event objects with consistent structure
+
     const events = (parsedData.events || []).map(event => ({
       name: event.name,
       platform: 'Meetup',
@@ -761,19 +668,35 @@ For each event, extract:
       description: event.description || null,
       price: event.price || 'Free'
     }));
-    
-    if (events.length > 0) {
-      console.log(`   → Parsed ${events.length} events with source: ${events[0].source}`);
+
+    const filteredEvents = events.filter(event => {
+      const location = (event.location || '').toLowerCase();
+      const name = (event.name || '').toLowerCase();
+      return (
+        location.includes('new york') ||
+        location.includes('brooklyn') ||
+        location.includes('manhattan') ||
+        location.includes('queens') ||
+        location.includes('bronx') ||
+        location.includes('staten island') ||
+        name.includes('brooklyn') ||
+        name.includes('manhattan') ||
+        name.includes('queens') ||
+        name.includes('bronx')
+      );
+    });
+
+    if (filteredEvents.length > 0) {
+      console.log(`   → Parsed ${filteredEvents.length} events with source: Meetup`);
     }
-    return events;
-    
+    return filteredEvents;
+
   } catch (error) {
     console.error('❌ Error scraping Meetup.com:', error.message);
     return [];
   } finally {
     if (browser) {
       await browser.close();
->>>>>>> cc2ed5cc07f90f8867f11b44812197043179af4d
     }
   }
 }
