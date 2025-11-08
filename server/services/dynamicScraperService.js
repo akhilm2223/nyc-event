@@ -78,7 +78,7 @@ For each game, extract:
 - format: Format (9v9, 11v11, etc.) if mentioned
 - description: Brief description (e.g., "9v9 pickup soccer game")`;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
     
     const response = await fetch(geminiUrl, {
       method: 'POST',
@@ -137,7 +137,7 @@ For each game, extract:
     const events = (parsedData.events || []).map(event => ({
       name: event.name,
       platform: 'GoodRec',
-      source: 'GoodRec (Scraped)',
+      source: 'GoodRec',
       link: url,
       time: event.time,
       location: event.location,
@@ -229,7 +229,7 @@ For each event, extract:
 - link: Direct event URL if available in the content, or null
 - description: Brief description if available`;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
     
     const response = await fetch(geminiUrl, {
       method: 'POST',
@@ -289,7 +289,7 @@ For each event, extract:
     const events = (parsedData.events || []).map(event => ({
       name: event.name,
       platform: 'Luma',
-      source: 'Luma (Scraped)',
+      source: 'Luma',
       link: event.link && event.link.startsWith('http') ? event.link : url,
       time: event.time,
       location: event.location,
@@ -390,7 +390,7 @@ For each event, extract:
 - link: Direct event URL if available in content, or null
 - description: Brief description from content`;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
     
     const response = await fetch(geminiUrl, {
       method: 'POST',
@@ -450,7 +450,7 @@ For each event, extract:
     const events = (parsedData.events || []).map(event => ({
       name: event.name,
       platform: 'Meetup',
-      source: 'Meetup (Scraped)',
+      source: 'Meetup',
       link: event.link && event.link.startsWith('http') ? event.link : url,
       time: event.time,
       location: event.location,

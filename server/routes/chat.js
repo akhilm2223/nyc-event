@@ -70,7 +70,7 @@ Return the events in JSON format with this exact structure:
 
 Only include real, verified events that are actually happening. If you can't find any events, return {"events": []}.`;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
     
     const requestBody = {
       contents: [{
@@ -650,7 +650,7 @@ Remember the conversation history and build on what the user has asked before.${
 
     // Call Gemini API
     const key = process.env.GEMINI_API_KEY;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`;
     
     const body = { contents };
 
