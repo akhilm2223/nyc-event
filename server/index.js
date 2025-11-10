@@ -5,6 +5,7 @@ import bodyParser from 'body-parser';
 import { connectDB } from './db/mongo.js';
 import webhookRouter from './routes/instaWebhook.js';
 import chatRouter from './routes/chat.js';
+import testInstagramRouter from './routes/testInstagram.js';
 
 // Load environment variables
 dotenv.config();
@@ -35,6 +36,9 @@ app.use('/webhook', webhookRouter);
 
 // Chat API routes (for web interface)
 app.use('/api', chatRouter);
+
+// Test Instagram configuration
+app.use('/test-instagram', testInstagramRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
