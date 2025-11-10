@@ -1,141 +1,86 @@
-# 🚀 Quick Start - Get Running in 5 Minutes
+# 🚀 Quick Start - Instagram DM Bot
 
-## Step 1: Get Your Gemini API Key (Free)
+## ✅ What You Have
+- Server code ready at `~/Desktop/cc/server`
+- Webhook endpoint: `/webhook`
+- Meta App ID: `24355790484095730`
+- ngrok running with public URL
 
-1. Visit: **https://makersuite.google.com/app/apikey**
-2. Sign in with Google
-3. Click **"Get API Key"** or **"Create API Key"**
-4. Copy the key (starts with `AIza...`)
+## 🎯 What You Need To Do
 
-## Step 2: Add API Key to `.env`
+### 1. Get Your Credentials
 
-Open `server/.env` and paste your key:
+Visit your Meta App Dashboard:
+👉 https://developers.facebook.com/apps/24355790484095730
 
+**Get App Secret:**
+- Settings → Basic → Show App Secret
+
+**Get Page Access Token:**
+- Instagram → Basic Display → Generate Token
+
+**Get Page ID:**
+- Your Facebook Page → About → Page ID
+
+### 2. Update `.env` File
+
+```bash
+cd ~/Desktop/cc/server
+```
+
+Edit `.env` and add:
 ```env
-GEMINI_API_KEY=AIzaSyC_your_actual_key_here
+APP_SECRET=your_app_secret_from_dashboard
+INSTAGRAM_ACCESS_TOKEN=EAAJxxxxx_your_token_here
+PAGE_ID=your_page_id_here
 ```
 
-Save the file.
+### 3. Configure Webhook in Meta Dashboard
 
-## Step 3: Test the AI (No Server Needed!)
+Go to: https://developers.facebook.com/apps/24355790484095730/webhooks/
 
-```bash
-cd server
-node test-ai.js
-```
+**Callback URL:** `https://YOUR-NGROK-URL/webhook`
+**Verify Token:** `my_event_ai_secret_verify_token_2024`
 
-You should see:
-```
-🧪 Testing AI Services
-🧠 Parsing user intent...
-✅ Parsed Intent: { category: "tech meetup", ... }
-💬 Formatting response...
-🤖 BOT RESPONSE:
-"Here are 3 tech events I found 👇
-💡 AI Builders Meetup..."
-```
+Subscribe to: `messages`, `messaging_postbacks`, `message_echoes`
 
-✅ **If this works, your AI is ready!**
+### 4. Test It!
 
----
+1. Make sure server is running:
+   ```bash
+   npm start
+   ```
 
-## Step 4: Start the Full Server
+2. Make sure ngrok is running:
+   ```bash
+   ngrok http 3000
+   ```
 
-```bash
-npm run dev
-```
+3. Send a DM to your Instagram Business account
 
-You should see:
-```
-⚠️  MongoDB not configured - running without database
-🚀 Server running on port 3000
-📍 Webhook URL: http://localhost:3000/webhook
-```
+4. Check server logs - you should see:
+   ```
+   📨 Received message from [user_id]:
+      "your message"
+   ✅ Message sent successfully
+   ```
 
-Open browser: **http://localhost:3000**
+## 🔧 Troubleshooting
 
-You should see:
-```json
-{
-  "status": "online",
-  "service": "Instagram Event AI Assistant"
-}
-```
+**Webhook verification fails?**
+- Check ngrok URL is correct
+- Verify token matches: `my_event_ai_secret_verify_token_2024`
 
----
+**Not receiving messages?**
+- Instagram account must be a Business account
+- Facebook Page must be connected to Instagram
+- Check webhook subscriptions are active
 
-## What's Working Now:
+**Can't send replies?**
+- Verify `INSTAGRAM_ACCESS_TOKEN` is set
+- Check token hasn't expired
+- Ensure you have `instagram_manage_messages` permission
 
-✅ Express server  
-✅ Instagram webhook endpoints  
-✅ Gemini AI for natural language understanding  
-✅ Conversational response formatting  
-⏳ MongoDB (optional - add later)  
-⏳ Instagram API (setup next)  
-⏳ Real event APIs (coming soon)  
+## 📖 Full Documentation
 
----
-
-## Next Steps:
-
-### Option A: Connect Instagram (30 min setup)
-1. Convert IG account to Professional
-2. Create Facebook Page
-3. Meta Developer Portal setup
-4. Get access token
-5. Use ngrok for webhooks
-
-### Option B: Add Event APIs (Easier!)
-1. Get Eventbrite API key
-2. Get Meetup API key  
-3. Integrate real event data
-
-### Option C: Build Dashboard
-1. React + Vite frontend
-2. View user queries
-3. Analytics & insights
-
----
-
-## 🐛 Troubleshooting
-
-**"GEMINI_API_KEY not found"**
-- Make sure you edited `server/.env` (not `.env.example`)
-- Check there are no spaces around the `=` sign
-- Key should start with `AIza`
-
-**Server won't start**
-- Make sure you ran `npm install` first
-- Check port 3000 isn't already in use
-- Try `npm run dev` again
-
-**API quota exceeded**
-- Gemini free tier has limits
-- Wait a few minutes and try again
-- Or upgrade to paid tier
-
----
-
-## 📚 Files Overview
-
-```
-server/
-├── index.js              # Main server (Express)
-├── test-ai.js           # Test AI without full server ⭐
-├── .env                 # Your API keys (edit this!)
-├── routes/
-│   └── instaWebhook.js  # Instagram message handling
-├── services/
-│   ├── geminiService.js    # AI magic ✨
-│   ├── instagramService.js # Send DMs
-│   └── messageHandler.js   # Orchestration
-└── db/
-    └── mongo.js         # Database schemas
-```
-
----
-
-**Got it working? 🎉 You're ready for the next step!**
-
-Let me know if you hit any issues.
-
+See `INSTAGRAM_SETUP.md` for detailed setup instructions.

@@ -1,4 +1,3 @@
-import { parseUserIntent, formatEventResponse } from './geminiService.js';
 import { sendInstagramMessage, sendTypingIndicator, markMessageSeen } from './instagramService.js';
 import { Query, User } from '../db/mongo.js';
 
@@ -17,27 +16,11 @@ export const handleIncomingMessage = async (senderId, messageText) => {
     // Update user stats
     await updateUserStats(senderId);
     
-    // Parse the user's intent using Gemini
-    const intent = await parseUserIntent(messageText);
-    
-    // For now, we'll create a mock response until we add event APIs
-    // This will be replaced in the next step with actual event fetching
-    const mockEvents = [
-      {
-        title: "Jets vs Giants",
-        date: new Date(),
-        time: "7:00 PM",
-        venue: "MetLife Stadium",
-        address: "East Rutherford, NJ",
-        ticketLink: "https://example.com/tickets"
-      }
-    ];
-    
-    // Generate conversational response
-    const responseText = await formatEventResponse(mockEvents, messageText);
+    // Simple response for now - Instagram webhook integration is not fully configured
+    const responseText = "Thanks for your message! The Instagram integration is currently being set up. Please use the web chat interface for now.";
     
     // Save query to database
-    await saveQuery(senderId, messageText, intent, mockEvents, responseText);
+    await saveQuery(senderId, messageText, {}, [], responseText);
     
     // Send response
     await sendInstagramMessage(senderId, responseText);

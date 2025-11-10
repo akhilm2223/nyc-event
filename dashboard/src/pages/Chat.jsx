@@ -2,10 +2,13 @@ import { useState, useEffect, useRef, Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, useGLTF, Center } from '@react-three/drei'
 
+// Preload the model
+useGLTF.preload('/textured.glb')
+
 // Small 3D Model Component for Header (same size as emoji)
 function HeaderModel({ url }) {
   try {
-    const gltf = useGLTF(url || '/wtc.glb')
+    const gltf = useGLTF(url || '/textured.glb')
     const scene = gltf?.scene
     
     if (!scene) {
@@ -51,13 +54,42 @@ function HeaderModel({ url }) {
 // 3D Model Component
 function Model3D({ url }) {
   try {
-    const { scene } = useGLTF(url || '/wtc.glb')
+    const { scene } = useGLTF(url || '/textured.glb')
+    
+    if (!scene) {
+      console.error('Model3D: Scene not found in GLB file')
+      return (
+        <mesh>
+          <boxGeometry args={[2, 2, 2]} />
+          <meshStandardMaterial color="#6366f1" />
+        </mesh>
+      )
+    }
+
+    // Clone and prepare the scene
+    const clonedScene = scene.clone()
+    
+    // Make sure all meshes are visible and have materials
+    clonedScene.traverse((child) => {
+      if (child.isMesh) {
+        child.visible = true
+        child.castShadow = true
+        child.receiveShadow = true
+        if (child.material) {
+          child.material.needsUpdate = true
+        }
+      }
+    })
+
+    console.log('Model3D: Successfully loaded', url)
+    
     return (
       <Center>
-        <primitive object={scene} scale={2.16} />
+        <primitive object={clonedScene} scale={2.16} />
       </Center>
     )
   } catch (error) {
+    console.error('Model3D error:', error)
     // Fallback: Show a simple rotating cube if model fails to load
     return (
       <mesh>
@@ -304,7 +336,7 @@ export default function Chat() {
                   <spotLight position={[10, 10, 10]} angle={0.3} penumbra={1} intensity={1.0} />
                   <pointLight position={[-10, -10, -10]} intensity={0.5} />
                   <Suspense fallback={<FallbackModel />}>
-                    <Model3D url="/wtc.glb" />
+                    <Model3D url="/textured.glb" />
                   </Suspense>
                   <OrbitControls 
                     enableZoom={false} 

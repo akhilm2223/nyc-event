@@ -1,12 +1,7 @@
 import express from 'express';
-import { parseUserIntent, formatEventResponse, searchEventsWithAI } from '../services/geminiService.js';
-// import { searchEventsWithPerplexity } from '../services/perplexityService.js'; // COMMENTED OUT: Perplexity removed from search
+import { searchEventsWithPerplexity } from '../services/perplexityService.js';
 import { searchEventbriteEvents } from '../services/eventbriteService.js';
-<<<<<<< HEAD
-import { scrapeGoodRecEvents, scrapeGoodRecVolleyball, scrapeLumaEvents } from '../services/dynamicScraperService.js';
-=======
 import { scrapeGoodRecEvents, scrapeLumaEvents, scrapeMeetupEvents } from '../services/dynamicScraperService.js';
->>>>>>> cc2ed5cc07f90f8867f11b44812197043179af4d
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 
@@ -220,10 +215,7 @@ router.post('/chat', async (req, res) => {
     const messageLower = message.toLowerCase();
     const isEventQuery = eventKeywords.some(keyword => messageLower.includes(keyword));
 
-    // COMMENTED OUT: Perplexity variables
-    // let eventData = null; // Perplexity API response
-    // let perplexityContext = ''; // Context from Perplexity API
-    
+    let eventData = null; // Perplexity API response
     let eventbriteEvents = null;
     let dynamicEvents = null; // Events from Puppeteer scraping
     let eventContext = '';
@@ -367,42 +359,40 @@ router.post('/chat', async (req, res) => {
                        (!explicitlyGoodRec && !isVolleyball && !queryLower.includes('football') && !queryLower.includes('soccer') && 
                         !queryLower.includes('pickup') && !queryLower.includes('sport'));
       
-      // COMMENTED OUT: Perplexity API search
-      // // 1. Perplexity for indexable platforms (Meetup, Eventbrite, general search)
-      // if (process.env.PERPLEXITY_API_KEY) {
-      //   searchPromises.push(
-      //     (async () => {
-      //       try {
-      //         console.log('🔍 [DATA SOURCE: PERPLEXITY API] Starting search for indexable platforms...');
-      //         console.log(`   → Query: "${message}"`);
-      //         console.log(`   → Target Date: ${targetDateStr}`);
-      //         const recentUserMessages = recentHistory
-      //           .filter(msg => msg.role === 'user')
-      //           .slice(-3)
-      //           .map(msg => msg.content)
-      //           .join('; ');
-      //         
-      //         eventData = await searchEventsWithPerplexity(message, recentUserMessages);
-      //         console.log(`✅ [DATA SOURCE: PERPLEXITY API] Search complete`);
-      //         console.log(`   → Found ${eventData.citations?.length || 0} citation sources`);
-      //         console.log(`   → Content length: ${eventData.content?.length || 0} characters`);
-      //         if (eventData.citations && eventData.citations.length > 0) {
-      //           console.log(`   → Citation URLs:`, eventData.citations.slice(0, 3).join(', '), eventData.citations.length > 3 ? '...' : '');
-      //         }
-      //         return eventData;
-      //       } catch (error) {
-      //         console.error('❌ [DATA SOURCE: PERPLEXITY API] Failed:', error.message);
-      //         return null;
-      //       }
-      //     })()
-      //   );
-      // } else {
-      //   console.log('⚠️ [DATA SOURCE: PERPLEXITY API] Skipped - API key not configured');
-      // }
-      
-      // Search ALL primary platforms: Eventbrite, GoodRec, Luma, Meetup
-      // These are the primary data sources, Gemini web search is fallback
+      // Search ALL primary platforms: Perplexity, Eventbrite, GoodRec, Luma, Meetup
       const searchPromises = [];
+      
+      // 1. Perplexity API for web search (Eventbrite, Meetup, general events)
+      if (process.env.PERPLEXITY_API_KEY) {
+        searchPromises.push(
+          (async () => {
+            try {
+              console.log('🔍 [DATA SOURCE: PERPLEXITY API] Starting web search...');
+              console.log(`   → Query: "${message}"`);
+              console.log(`   → Target Date: ${targetDateStr}`);
+              const recentUserMessages = recentHistory
+                .filter(msg => msg.role === 'user')
+                .slice(-3)
+                .map(msg => msg.content)
+                .join('; ');
+              
+              eventData = await searchEventsWithPerplexity(message, recentUserMessages);
+              console.log(`✅ [DATA SOURCE: PERPLEXITY API] Search complete`);
+              console.log(`   → Found ${eventData.citations?.length || 0} citation sources`);
+              console.log(`   → Content length: ${eventData.content?.length || 0} characters`);
+              if (eventData.citations && eventData.citations.length > 0) {
+                console.log(`   → Citation URLs:`, eventData.citations.slice(0, 3).join(', '), eventData.citations.length > 3 ? '...' : '');
+              }
+              return { platform: 'Perplexity', data: eventData };
+            } catch (error) {
+              console.error('❌ [DATA SOURCE: PERPLEXITY API] Failed:', error.message);
+              return null;
+            }
+          })()
+        );
+      } else {
+        console.log('⚠️ [DATA SOURCE: PERPLEXITY API] Skipped - API key not configured');
+      }
       
       // 1. Eventbrite API
       if (process.env.EVENTBRITE_API_KEY) {
@@ -453,35 +443,6 @@ router.post('/chat', async (req, res) => {
         );
       }
       
-<<<<<<< HEAD
-      // 2. Puppeteer + Gemini for dynamic platforms (GoodRec Soccer, GoodRec Volleyball, Luma)
-      if (needsGoodRec || needsGoodRecVolleyball || needsLuma) {
-        if (needsGoodRecVolleyball) {
-          searchPromises.push(
-            (async () => {
-              try {
-                console.log('🌐 [Hybrid] Scraping GoodRec Volleyball (NYC only) with Puppeteer...');
-                const volleyballEvents = await scrapeGoodRecVolleyball(targetDateStr);
-                console.log(`✅ [Hybrid] GoodRec Volleyball scraping found ${volleyballEvents.length} events (NYC only)`);
-                return { platform: 'GoodRec', events: volleyballEvents };
-              } catch (error) {
-                console.error('⚠️ [Hybrid] GoodRec Volleyball scraping failed:', error.message);
-                return null;
-              }
-            })()
-          );
-        } else if (needsGoodRec) {
-          searchPromises.push(
-            (async () => {
-              try {
-                console.log('🌐 [Hybrid] Scraping GoodRec Soccer with Puppeteer...');
-                const goodRecEvents = await scrapeGoodRecEvents(targetDateStr);
-                console.log(`✅ [Hybrid] GoodRec Soccer scraping found ${goodRecEvents.length} events`);
-                return { platform: 'GoodRec', events: goodRecEvents };
-              } catch (error) {
-                console.error('⚠️ [Hybrid] GoodRec Soccer scraping failed:', error.message);
-                return null;
-=======
       // 3. Luma scraper (always search unless GoodRec is explicitly requested)
       if (!explicitlyGoodRec) {
         searchPromises.push(
@@ -497,7 +458,6 @@ router.post('/chat', async (req, res) => {
                 console.log(`   → Sample events:`, lumaEvents.slice(0, 2).map(e => e.name).join(', '));
                 console.log(`   → All events have platform: ${lumaEvents.every(e => e.platform === 'Luma')}`);
                 console.log(`   → Source tracking: ${lumaEvents[0].source || 'Not set'}`);
->>>>>>> cc2ed5cc07f90f8867f11b44812197043179af4d
               }
               return { platform: 'Luma', events: lumaEvents };
             } catch (error) {
@@ -539,8 +499,12 @@ router.post('/chat', async (req, res) => {
       dynamicEvents = [];
       results.forEach((result, index) => {
         if (result.status === 'fulfilled' && result.value) {
-          if (result.value.platform) {
-            // Puppeteer result
+          if (result.value.platform === 'Perplexity') {
+            // Perplexity result
+            eventData = result.value.data;
+            console.log(`   → Perplexity: ${eventData.citations?.length || 0} sources`);
+          } else if (result.value.platform && result.value.events) {
+            // Scraper result
             console.log(`   → Adding ${result.value.events.length} events from ${result.value.platform}`);
             dynamicEvents.push(...result.value.events);
           }
@@ -548,32 +512,27 @@ router.post('/chat', async (req, res) => {
           console.log(`   → Source ${index + 1} rejected:`, result.reason?.message || 'Unknown error');
         }
       });
-      console.log(`✅ [DATA AGGREGATION] Total events from platforms: ${dynamicEvents.length}`);
+      console.log(`✅ [DATA AGGREGATION] Total: Perplexity=${eventData?.citations?.length || 0} sources, Scrapers=${dynamicEvents.length} events`);
       
       // Build context from event data
       let combinedContext = '';
       
-      // COMMENTED OUT: Perplexity results context building
-      // // Add Perplexity results
-      // if (eventData) {
-      //   const citationUrls = eventData.citations?.map((url, idx) => `[${idx + 1}] ${url}`).join('\n') || 'No URLs found';
-      //   combinedContext += `\n\n===== REAL EVENT DATA FROM PERPLEXITY API (indexable platforms: Eventbrite.com, Meetup, etc.) =====\n${eventData.content}\n\n===== SOURCE URLS (USE THESE EXACT LINKS) =====\n${citationUrls}\n\n`;
-      // }
+      // Add Perplexity results
+      if (eventData) {
+        const citationUrls = eventData.citations?.map((url, idx) => `[${idx + 1}] ${url}`).join('\n') || 'No URLs found';
+        combinedContext += `\n\n===== REAL EVENT DATA FROM PERPLEXITY WEB SEARCH (Eventbrite, Meetup, venues, etc.) =====\n${eventData.content}\n\n===== SOURCE URLS (USE THESE EXACT LINKS) =====\n${citationUrls}\n\n`;
+      }
       
-      // Add event data from platforms
+      // Add event data from scrapers
       if (dynamicEvents && dynamicEvents.length > 0) {
         const dynamicData = dynamicEvents.map(e => 
           `${e.name}\nDate & Time: ${e.time || 'TBD'}\nLocation: ${e.location || 'TBD'}\nPlatform: ${e.platform}\nSource: ${e.source || e.platform}\nLink: ${e.link}\nDescription: ${e.description || ''}`
         ).join('\n\n---\n\n');
         
-        combinedContext += `\n\n===== REAL EVENT DATA (platforms: Eventbrite, GoodRec, Luma, Meetup) =====\n${dynamicData}\n\nIMPORTANT: These events were extracted from real platforms. Use the exact event names, times, locations, platforms, sources, and links shown above.`;
+        combinedContext += `\n\n===== REAL EVENT DATA FROM SCRAPERS (GoodRec, Luma, Meetup) =====\n${dynamicData}\n\nIMPORTANT: These events were extracted from real platforms. Use the exact event names, times, locations, platforms, sources, and links shown above.`;
       }
       
       eventContext = combinedContext || eventContext;
-      
-      // COMMENTED OUT: Previous logging with Perplexity
-      // console.log(`✅ [Hybrid] Total events found: Perplexity=${eventData?.citations?.length || 0} sources, Puppeteer=${dynamicEvents.length} events`);
-      console.log(`✅ Total events found: ${dynamicEvents.length} events`);
       
       // If no events found from scrapers, use Gemini web search as fallback
       if (!dynamicEvents || dynamicEvents.length === 0) {
@@ -717,10 +676,8 @@ Remember the conversation history and build on what the user has asked before.${
       reply: reply.trim(),
       sessionId: sessionId,
       historyLength: session.history.length,
-      // COMMENTED OUT: Perplexity citations
-      // citations: eventData?.citations || [], // Include citations from Perplexity
-      eventbriteEvents: eventbriteEvents || [], // Include Eventbrite events
-      dynamicEvents: dynamicEvents || [] // Include events from Puppeteer scraping (GoodRec, Luma, Meetup)
+      citations: eventData?.citations || [], // Include citations from Perplexity
+      dynamicEvents: dynamicEvents || [] // Include events from scrapers (GoodRec, Luma, Meetup)
     });
 
   } catch (error) {

@@ -17,6 +17,9 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Serve static files (privacy policy, terms, etc.)
+app.use(express.static('public'));
+
 // Health check endpoint
 app.get('/', (req, res) => {
   res.json({
