@@ -8,6 +8,9 @@ const router = express.Router();
  * Meta will call this endpoint to verify your webhook URL
  */
 router.get('/', (req, res) => {
+  // Set header to bypass ngrok warning page
+  res.setHeader('ngrok-skip-browser-warning', 'true');
+  
   const VERIFY_TOKEN = process.env.INSTAGRAM_VERIFY_TOKEN;
   
   // Parse params from the webhook verification request
@@ -41,8 +44,8 @@ router.post('/', async (req, res) => {
     const body = req.body;
     
     // Log the full webhook payload for debugging
-    console.log('\n🔔 Webhook received:');
-    console.log(JSON.stringify(body, null, 2));
+    console.log('\n🔔 Webhook received at:', new Date().toISOString());
+    console.log('Full payload:', JSON.stringify(body, null, 2));
     
     // Check if this is an event from Instagram
     if (body.object === 'instagram') {
@@ -50,12 +53,16 @@ router.post('/', async (req, res) => {
       res.sendStatus(200);
       
       // Process each entry in the webhook payload
-      body.entry.forEach(async (entry) => {
+      for (const entry of body.entry) {
+        console.log('\n📦 Processing entry:', entry.id);
+        
         // Instagram can send different webhook formats
         // Try messaging format first (for DMs)
         const webhookEvent = entry.messaging?.[0];
         
         if (webhookEvent) {
+          console.log('✅ Found messaging event');
+          
           // Get sender ID
           const senderId = webhookEvent.sender.id;
           
@@ -64,24 +71,25 @@ router.post('/', async (req, res) => {
             const messageText = webhookEvent.message.text;
             
             console.log(`\n📨 Received message from ${senderId}:`);
-            console.log(`   "${messageText}"`);
+            console.log(`   Text: "${messageText}"`);
+            console.log(`   Message ID: ${webhookEvent.message.mid}`);
             
             // Handle the message (process with AI and respond)
-            await handleIncomingMessage(senderId, messageText);
+            try {
+              await handleIncomingMessage(senderId, messageText);
+            } catch (handlerError) {
+              console.error('❌ Error in message handler:', handlerError);
+            }
+          } else {
+            console.log('⚠️ Messaging event but no message text');
+            console.log('   Event:', JSON.stringify(webhookEvent, null, 2));
           }
         } else {
-          // Check for changes format (comments, mentions, etc.)
-          const changes = entry.changes;
-          if (changes) {
-            console.log('📝 Received changes event (not a DM):', changes);
-          } else {
-            console.log('⚠️ Unknown webhook format - no messaging or changes found');
-          }
+          console.log('⚠️ No messaging event found in entry');
         }
-      });
+      }
     } else {
-      // Not from Instagram, return 404 Not Found
-      console.log('❌ Webhook not from Instagram, object:', body.object);
+      console.log('⚠️ Not an Instagram webhook event');
       res.sendStatus(404);
     }
   } catch (error) {

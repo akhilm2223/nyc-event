@@ -5,17 +5,19 @@ import mongoose from 'mongoose';
  */
 export const connectDB = async () => {
   try {
-    const mongoURI = process.env.MONGODB_URI;
+    // Check both MONGODB_URI and MONGO_URI for compatibility
+    const mongoURI = process.env.MONGODB_URI || process.env.MONGO_URI;
     
     if (!mongoURI || mongoURI.trim() === '') {
       console.log('⚠️  MongoDB not configured - running without database (development mode)');
-      console.log('   Add MONGODB_URI to .env to enable database features');
+      console.log('   Add MONGO_URI to .env to enable database features');
       return;
     }
     
     await mongoose.connect(mongoURI);
     
     console.log('✅ MongoDB connected successfully');
+    console.log(`📊 Database: ${mongoose.connection.name}`);
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
     console.log('⚠️  Continuing without database...');

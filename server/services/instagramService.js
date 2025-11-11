@@ -14,6 +14,10 @@ export const sendInstagramMessage = async (recipientId, messageText) => {
       throw new Error('Instagram credentials not configured');
     }
     
+    console.log(`📤 Attempting to send message to ${recipientId}`);
+    console.log(`   Using PAGE_ID: ${pageId}`);
+    console.log(`   Message length: ${messageText.length} chars`);
+    
     const url = `${INSTAGRAM_API_URL}/${pageId}/messages`;
     
     const payload = {
@@ -26,13 +30,19 @@ export const sendInstagramMessage = async (recipientId, messageText) => {
       access_token: accessToken
     };
     
+    console.log(`   API URL: ${url}`);
+    
     const response = await axios.post(url, payload);
     
     console.log('✅ Message sent successfully to', recipientId);
+    console.log('   Response:', JSON.stringify(response.data, null, 2));
     return response.data;
     
   } catch (error) {
-    console.error('❌ Error sending Instagram message:', error.response?.data || error.message);
+    console.error('❌ Error sending Instagram message:');
+    console.error('   Status:', error.response?.status);
+    console.error('   Error:', JSON.stringify(error.response?.data, null, 2) || error.message);
+    console.error('   Recipient ID:', recipientId);
     throw error;
   }
 };

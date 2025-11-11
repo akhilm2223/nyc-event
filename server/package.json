@@ -7,17 +7,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "test:gemini": "node test-gemini.js",
-    "test:perplexity": "node test-perplexity.js",
-    "test:eventbrite": "node test-eventbrite.js",
-    "test:hybrid": "node test-hybrid-scraper.js",
-    "scrape:nyc": "node scripts/scrapeNYCEvents.js",
-    "scrape:schedule": "node scripts/scheduleScraper.js",
-    "enrich:events": "node scripts/enrichEvents.js",
-    "enrich:test": "node scripts/enrichEvents.js 3",
-    "ai:counts": "node scripts/queryAIEventCounts.js",
-    "ai:counts:weekend": "node scripts/queryAIEventCounts.js this weekend"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
     "instagram",
