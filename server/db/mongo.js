@@ -3,25 +3,33 @@ import mongoose from 'mongoose';
 /**
  * Connect to MongoDB Atlas
  */
-export const connectDB = async () => {
+export const connectDB = async (throwOnError = false) => {
   try {
     // Check both MONGODB_URI and MONGO_URI for compatibility
     const mongoURI = process.env.MONGODB_URI || process.env.MONGO_URI;
     
     if (!mongoURI || mongoURI.trim() === '') {
-      console.log('⚠️  MongoDB not configured - running without database (development mode)');
-      console.log('   Add MONGO_URI to .env to enable database features');
+      const message = 'MongoDB not configured - Add MONGO_URI to .env file';
+      if (throwOnError) {
+        throw new Error(message);
+      }
+      console.log('⚠️  ' + message + ' (development mode)');
       return;
     }
     
-    await mongoose.connect(mongoURI);
+    await mongoose.connect(mongoURI, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
     
     console.log('✅ MongoDB connected successfully');
     console.log(`📊 Database: ${mongoose.connection.name}`);
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
+    if (throwOnError) {
+      throw error;
+    }
     console.log('⚠️  Continuing without database...');
-    // Don't throw - allow server to start without DB in development
   }
 };
 

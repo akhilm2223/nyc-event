@@ -45,7 +45,6 @@ Find actual events with:
 - Direct event link/URL (registration or ticket URL)
 
 Focus on events from platforms like:
-- Eventbrite
 - Meetup
 - Luma
 - Dice.fm
@@ -62,7 +61,7 @@ Return the events in JSON format with this exact structure:
       "location": "Venue name and neighborhood (e.g., 'WeWork Bryant Park, Midtown')",
       "link": "Direct event URL",
       "description": "Brief description",
-      "platform": "Platform name if known (Eventbrite, Meetup, etc.)",
+      "platform": "Platform name if known (Meetup, Luma, etc.)",
       "source": "Web Search"
     }
   ]
@@ -289,7 +288,6 @@ router.post('/chat', async (req, res) => {
     const isEventQuery = eventKeywords.some(keyword => messageLower.includes(keyword));
 
     let eventData = null; // Perplexity API response
-    let eventbriteEvents = null;
     let dbEvents = null; // Events from database
     let eventContext = '';
     let targetDate = null; // Declare outside block for caching access
@@ -561,7 +559,7 @@ router.post('/chat', async (req, res) => {
     const systemInstruction = `You are NYC Event AI, a friendly and conversational city assistant built to help people instantly find what's happening today in New York City — from concerts, sports, and tech meetups to date ideas, parties, art shows, and pop-up events. Your goal is to make discovering and planning a fun day or night in NYC simple and personal, like chatting with a local friend who knows what's going on around the city.
 
 CRITICAL RULES - READ CAREFULLY:
-1. You will receive event data from platforms (Eventbrite, GoodRec, Luma, Meetup) or web search below
+1. You will receive event data from platforms (Luma, Meetup, Database) or APIs below
 2. DO NOT make up events - ONLY use events from the provided data
 3. DO NOT write "Not Available" or "Location not specified" - skip events without info
 4. USE THE EXACT URLs from the event data - DO NOT modify or shorten them
@@ -575,8 +573,8 @@ Event Name (from event data)
 📍 Venue & Location (from event data)
 💰 Price (from event data, or "RSVP to check" if missing)
 💡 Brief description (from event data)
-Platform: [Platform name - Eventbrite, Meetup, or platform from database]
-Source: [Source info - e.g., "Eventbrite", "Meetup", "Database"]
+Platform: [Platform name - Luma, Meetup, or platform from database]
+Source: [Source info - e.g., "Luma", "Meetup", "Database"]
 🔗 [EXACT URL from event data]
 
 Example - if event data shows "AI Meetup at WeWork on Nov 5" with source URL https://lu.ma/ai-meetup:

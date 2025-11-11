@@ -29,36 +29,41 @@ npm run dev
 ### Services
 - `server/services/perplexityService.js` - Perplexity AI integration
 - `server/services/instagramService.js` - Instagram API
-- `server/services/geminiService.js` - Gemini AI for scraping
+- `server/services/messageHandler.js` - Instagram message handler
 
 ### Scripts
-- `server/scripts/manualEventImport.js` - Import events from JSON
-- `server/scripts/replaceAllEvents.js` - Replace all database events
-- `server/scripts/cleanupDatabase.js` - Clean up old events
-- `server/scripts/scrapeReliableSources.js` - Scrape GoodRec, Luma, Meetup
-- `server/scripts/scheduleAllScrapers.js` - Daily scraper scheduler
-
-### Data
-- `manual-import-templates/nycforfree-events-complete.json` - NYC for FREE events (87 events)
+- `server/scripts/importEventbriteEvents.js` - Import Eventbrite events
+- `server/scripts/importLumaEvents.js` - Import Luma events
+- `server/scripts/importMeetupEvents.js` - Import Meetup events
+- `server/scripts/exportAllEvents.js` - Export all events to JSON/TXT
+- `server/scripts/listAllEvents.js` - List all events in database
+- `server/scripts/fixEventIndexes.js` - Fix database indexes
 
 ## Features
 
-- 🔍 Searches database first (87 curated NYC for FREE events)
+- 🔍 Searches database first (150+ curated events)
 - 🌐 Falls back to Perplexity AI for additional events
-- 🤖 Scrapes GoodRec, Luma, and Meetup for real-time events
 - 💬 Instagram DM integration
+- 🌐 Web chat interface (dashboard)
 - 📊 MongoDB for event storage
 
 ## Import Events
 
 ```bash
 cd server
-node scripts/manualEventImport.js ../manual-import-templates/nycforfree-events-complete.json
+npm run import:meetup
 ```
 
-## Replace All Events
+## List Events
 
 ```bash
 cd server
-node scripts/replaceAllEvents.js ../manual-import-templates/nycforfree-events-complete.json
+npm run list:events
+```
+
+## Export Events
+
+```bash
+cd server
+npm run export:events
 ```
