@@ -2,13 +2,15 @@
  * Query Cache Service
  * Caches query results to avoid redundant API calls for duplicate queries
  * Now includes similarity detection to reuse cached results for similar queries
+ * Uses Redis for persistence and multi-instance support
  */
 
 import { log } from './cacheLogger.js';
+import { createClient } from 'redis';
 
-// In-memory cache with TTL (Time To Live)
-// Structure: Map<cacheKey, { data: any, expiresAt: number, originalQuery: string }>
-const cache = new Map();
+// Redis client - required for cache operations
+let redisClient = null;
+let redisInitialized = false;
 
 // Default TTL: 1 hour (in milliseconds)
 export const DEFAULT_TTL = 60 * 60 * 1000;
@@ -20,18 +22,80 @@ const SIMILARITY_THRESHOLD = 0.7;
 // Debug mode - set to true to enable detailed logging
 let DEBUG_MODE = true; // Enabled by default for debugging
 
-// Log startup message to confirm debug mode is active
-console.log('🔧 [QUERY CACHE] Debug mode ENABLED - detailed cache operations will be logged to terminal\n');
+// Redis key prefix
+const REDIS_KEY_PREFIX = 'query_cache:';
+const REDIS_META_PREFIX = 'query_meta:';
 
-// Cleanup interval: remove expired entries every 10 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of cache.entries()) {
-    if (value.expiresAt < now) {
-      cache.delete(key);
+/**
+ * Initialize Redis client - required for cache operations
+ */
+async function initializeCache() {
+  const redisUrl = process.env.REDIS_URL || (process.env.REDIS_HOST 
+    ? `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT || 6379}`
+    : null);
+
+  if (!redisUrl && !process.env.REDIS_URL) {
+    const error = new Error('Redis is required but not configured. Please set REDIS_URL or REDIS_HOST environment variable.');
+    console.error('❌ [REDIS]', error.message);
+    log(`❌ [REDIS] ${error.message}`);
+    throw error;
+  }
+
+  try {
+    redisClient = createClient({
+      url: redisUrl || process.env.REDIS_URL
+    });
+
+    redisClient.on('error', (err) => {
+      console.error('❌ [REDIS] Redis Client Error:', err);
+      log(`❌ [REDIS] Redis connection error: ${err.message}`);
+      redisInitialized = false;
+    });
+
+    redisClient.on('connect', () => {
+      console.log('✅ [REDIS] Redis Client Connected');
+      log('✅ [CACHE] Redis connected - cache will persist and be shared across instances');
+    });
+
+    await redisClient.connect();
+    redisInitialized = true;
+    console.log('✅ [REDIS] Redis initialized successfully');
+    log('✅ [CACHE] Using Redis for cache storage - cache will persist and be shared across instances');
+  } catch (error) {
+    console.error('❌ [REDIS] Failed to connect to Redis:', error.message);
+    log(`❌ [REDIS] Failed to connect to Redis: ${error.message}`);
+    redisInitialized = false;
+    throw error;
+  }
+}
+
+/**
+ * Ensure Redis is initialized
+ */
+async function ensureRedisInitialized() {
+  if (!redisInitialized || !redisClient) {
+    try {
+      await initializeCache();
+    } catch (error) {
+      throw new Error(`Redis is not available: ${error.message}. Please ensure Redis is running and configured.`);
     }
   }
-}, 10 * 60 * 1000);
+  if (!redisClient) {
+    throw new Error('Redis client is not available. Please ensure Redis is running and configured.');
+  }
+}
+
+// Initialize cache on module load (non-blocking)
+initializeCache().catch(err => {
+  console.error('❌ [REDIS] Failed to initialize cache:', err.message);
+  console.error('⚠️  [REDIS] Server will start but cache operations will fail until Redis is available');
+  log(`❌ [REDIS] Failed to initialize cache: ${err.message}`);
+  log(`⚠️  [REDIS] Cache operations will fail until Redis is configured and running`);
+  // Don't throw here - allow server to start, cache operations will handle errors
+});
+
+// Log startup message
+console.log('🔧 [QUERY CACHE] Debug mode ENABLED - detailed cache operations will be logged to terminal\n');
 
 /**
  * Normalize a query string for caching
@@ -241,6 +305,96 @@ export function generateCacheKey(query, targetDate = null) {
 }
 
 /**
+ * Get cache entry from Redis
+ */
+async function getCacheEntry(key) {
+  await ensureRedisInitialized();
+  
+  try {
+    const dataStr = await redisClient.get(REDIS_KEY_PREFIX + key);
+    const metaStr = await redisClient.get(REDIS_META_PREFIX + key);
+    
+    if (!dataStr || !metaStr) return null;
+    
+    const data = JSON.parse(dataStr);
+    const meta = JSON.parse(metaStr);
+    
+    return {
+      data,
+      expiresAt: meta.expiresAt,
+      originalQuery: meta.originalQuery
+    };
+  } catch (error) {
+    log(`❌ [REDIS] Error reading from Redis: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Set cache entry in Redis
+ */
+async function setCacheEntry(key, value, ttlMs) {
+  await ensureRedisInitialized();
+  
+  try {
+    const ttlSeconds = Math.ceil(ttlMs / 1000);
+    await redisClient.setEx(REDIS_KEY_PREFIX + key, ttlSeconds, JSON.stringify(value.data));
+    await redisClient.setEx(REDIS_META_PREFIX + key, ttlSeconds, JSON.stringify({
+      expiresAt: value.expiresAt,
+      originalQuery: value.originalQuery
+    }));
+  } catch (error) {
+    log(`❌ [REDIS] Error writing to Redis: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Delete cache entry from Redis
+ */
+async function deleteCacheEntry(key) {
+  await ensureRedisInitialized();
+  
+  try {
+    await redisClient.del(REDIS_KEY_PREFIX + key);
+    await redisClient.del(REDIS_META_PREFIX + key);
+  } catch (error) {
+    log(`❌ [REDIS] Error deleting from Redis: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Get all cache keys from Redis (for similarity search)
+ */
+async function getAllCacheKeys() {
+  await ensureRedisInitialized();
+  
+  try {
+    const keys = await redisClient.keys(REDIS_KEY_PREFIX + '*');
+    return keys.map(key => key.replace(REDIS_KEY_PREFIX, ''));
+  } catch (error) {
+    log(`❌ [REDIS] Error getting keys from Redis: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Get cache size from Redis
+ */
+async function getCacheSize() {
+  await ensureRedisInitialized();
+  
+  try {
+    const keys = await redisClient.keys(REDIS_KEY_PREFIX + '*');
+    return keys.length;
+  } catch (error) {
+    log(`❌ [REDIS] Error getting cache size from Redis: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
  * Get cached result if available and not expired
  * Also checks for similar queries in cache
  * @param {string} cacheKey - The cache key
@@ -248,29 +402,32 @@ export function generateCacheKey(query, targetDate = null) {
  * @param {boolean} debug - Enable debug logging
  * @returns {any|null} - Cached data or null if not found/expired
  */
-export function getCachedResult(cacheKey, originalQuery = null, debug = null) {
+export async function getCachedResult(cacheKey, originalQuery = null, debug = null) {
   // Use global debug mode if debug parameter is not explicitly set
   const useDebug = debug !== null ? debug : DEBUG_MODE;
   
   log(`\n🔍 [CACHE LOOKUP] Checking cache for query: "${originalQuery || cacheKey}"`);
   log(`   Cache key: ${cacheKey}`);
-  log(`   Cache size: ${cache.size} entries`);
+  log(`   Storage: Redis`);
+  const cacheSize = await getCacheSize();
+  log(`   Cache size: ${cacheSize} entries`);
   if (useDebug) {
     log(`   🔧 Debug mode: ENABLED`);
   }
   
-  const cached = cache.get(cacheKey);
+  const cached = await getCacheEntry(cacheKey);
   
   // Check exact match first
   if (cached) {
     // Check if expired
     if (cached.expiresAt < Date.now()) {
       log(`   ⏰ [CACHE] Entry expired, removing from cache`);
-      cache.delete(cacheKey);
+      await deleteCacheEntry(cacheKey);
     } else {
       const timeRemaining = Math.round((cached.expiresAt - Date.now()) / 1000 / 60);
       log(`   ✅ [CACHE] Exact match found!`);
       log(`   💾 Cache HIT (exact match) for key: ${cacheKey}`);
+      log(`   🌐 Shared cache - this result was cached by any user and is now being reused`);
       log(`   ⏰ Time remaining: ${timeRemaining} minutes`);
       return cached.data;
     }
@@ -283,7 +440,8 @@ export function getCachedResult(cacheKey, originalQuery = null, debug = null) {
     log(`\n🔍 [SIMILARITY SEARCH] Starting similarity search...`);
     log(`   Query: "${originalQuery}"`);
     log(`   Threshold: ${(SIMILARITY_THRESHOLD * 100).toFixed(0)}%`);
-    log(`   Checking ${cache.size} cached entries...`);
+    const allKeys = await getAllCacheKeys();
+    log(`   Checking ${allKeys.length} cached entries...`);
     
     const normalizedQuery = normalizeQuery(originalQuery);
     let bestMatch = null;
@@ -295,11 +453,15 @@ export function getCachedResult(cacheKey, originalQuery = null, debug = null) {
     const similarityScores = [];
     
     const now = Date.now();
-    for (const [key, value] of cache.entries()) {
+    for (const key of allKeys) {
+      const value = await getCacheEntry(key);
+      
       // Skip expired entries
-      if (value.expiresAt < now) {
-        expiredCount++;
-        cache.delete(key);
+      if (!value || value.expiresAt < now) {
+        if (value) {
+          expiredCount++;
+          await deleteCacheEntry(key);
+        }
         continue;
       }
       
@@ -375,9 +537,11 @@ export function getCachedResult(cacheKey, originalQuery = null, debug = null) {
     
     if (bestMatch) {
       const similarityPercent = Math.round(bestSimilarity * 100);
-      const matchedQuery = cache.get(bestKey)?.originalQuery || 'unknown';
+      const bestValue = await getCacheEntry(bestKey);
+      const matchedQuery = bestValue?.originalQuery || 'unknown';
       log(`\n   ✅ [CACHE HIT] Similar query found!`);
       log(`   💾 Cache HIT (similarity: ${similarityPercent}%) for query: "${originalQuery}"`);
+      log(`   🌐 Shared cache - this result was cached by any user and is now being reused`);
       log(`   → Matched cached query: "${matchedQuery}"`);
       log(`   → Cache key: ${bestKey}`);
       return bestMatch;
@@ -400,7 +564,7 @@ export function getCachedResult(cacheKey, originalQuery = null, debug = null) {
  * @param {string} originalQuery - The original query string (for similarity matching)
  * @param {boolean} debug - Enable debug logging
  */
-export function setCachedResult(cacheKey, data, ttl = DEFAULT_TTL, originalQuery = null, debug = null) {
+export async function setCachedResult(cacheKey, data, ttl = DEFAULT_TTL, originalQuery = null, debug = null) {
   // Use global debug mode if debug parameter is not explicitly set
   const useDebug = debug !== null ? debug : DEBUG_MODE;
   
@@ -413,18 +577,24 @@ export function setCachedResult(cacheKey, data, ttl = DEFAULT_TTL, originalQuery
     log(`   Original query: "${originalQuery || cacheKey}"`);
     log(`   TTL: ${ttlMinutes} minutes`);
     log(`   Expires at: ${new Date(expiresAt).toISOString()}`);
-    log(`   Cache size before: ${cache.size}`);
+    log(`   Storage: Redis`);
+    const cacheSize = await getCacheSize();
+    log(`   Cache size before: ${cacheSize}`);
   }
   
-  cache.set(cacheKey, {
+  const cacheValue = {
     data,
     expiresAt,
     originalQuery: originalQuery || cacheKey // Store original query for similarity matching
-  });
+  };
+  
+  await setCacheEntry(cacheKey, cacheValue, ttl);
   
   log(`💾 Cache SET for key: ${cacheKey} (expires in ${ttlMinutes} minutes)`);
+  log(`   🌐 Shared cache - this result will be available to all users`);
   if (useDebug) {
-    log(`   Cache size after: ${cache.size}`);
+    const cacheSize = await getCacheSize();
+    log(`   Cache size after: ${cacheSize}`);
     log(`   ✅ Cache entry stored successfully`);
   }
 }
@@ -433,42 +603,56 @@ export function setCachedResult(cacheKey, data, ttl = DEFAULT_TTL, originalQuery
  * Clear a specific cache entry
  * @param {string} cacheKey - The cache key to clear
  */
-export function clearCache(cacheKey) {
-  cache.delete(cacheKey);
+export async function clearCache(cacheKey) {
+  await deleteCacheEntry(cacheKey);
   log(`💾 Cache CLEARED for key: ${cacheKey}`);
 }
 
 /**
  * Clear all cache entries
  */
-export function clearAllCache() {
-  const size = cache.size;
-  cache.clear();
-  log(`💾 Cache CLEARED: ${size} entries removed`);
+export async function clearAllCache() {
+  await ensureRedisInitialized();
+  
+  try {
+    const keys = await redisClient.keys(REDIS_KEY_PREFIX + '*');
+    const metaKeys = await redisClient.keys(REDIS_META_PREFIX + '*');
+    if (keys.length > 0) await redisClient.del(keys);
+    if (metaKeys.length > 0) await redisClient.del(metaKeys);
+    log(`💾 Cache CLEARED: ${keys.length} entries removed from Redis`);
+  } catch (error) {
+    log(`❌ [REDIS] Error clearing Redis cache: ${error.message}`);
+    throw error;
+  }
 }
 
 /**
  * Get cache statistics
  * @returns {Object} - Cache stats
  */
-export function getCacheStats() {
+export async function getCacheStats() {
   const now = Date.now();
   let expiredCount = 0;
   let activeCount = 0;
   
-  for (const value of cache.values()) {
-    if (value.expiresAt < now) {
-      expiredCount++;
-    } else {
-      activeCount++;
+  const allKeys = await getAllCacheKeys();
+  for (const key of allKeys) {
+    const value = await getCacheEntry(key);
+    if (value) {
+      if (value.expiresAt < now) {
+        expiredCount++;
+      } else {
+        activeCount++;
+      }
     }
   }
   
   return {
-    total: cache.size,
+    total: allKeys.length,
     active: activeCount,
     expired: expiredCount,
-    similarityThreshold: SIMILARITY_THRESHOLD
+    similarityThreshold: SIMILARITY_THRESHOLD,
+    storage: 'Redis'
   };
 }
 
@@ -501,30 +685,35 @@ export function getDebugMode() {
  * Get detailed cache information for debugging
  * @returns {Object} - Detailed cache information
  */
-export function getCacheDebugInfo() {
+export async function getCacheDebugInfo() {
   const now = Date.now();
   const entries = [];
   
-  for (const [key, value] of cache.entries()) {
-    const isExpired = value.expiresAt < now;
-    const timeRemaining = isExpired ? 0 : Math.round((value.expiresAt - now) / 1000 / 60);
-    
-    entries.push({
-      key,
-      originalQuery: value.originalQuery || 'N/A',
-      isExpired,
-      timeRemaining: isExpired ? 'Expired' : `${timeRemaining} minutes`,
-      expiresAt: new Date(value.expiresAt).toISOString(),
-      hasData: !!value.data
-    });
+  const allKeys = await getAllCacheKeys();
+  for (const key of allKeys) {
+    const value = await getCacheEntry(key);
+    if (value) {
+      const isExpired = value.expiresAt < now;
+      const timeRemaining = isExpired ? 0 : Math.round((value.expiresAt - now) / 1000 / 60);
+      
+      entries.push({
+        key,
+        originalQuery: value.originalQuery || 'N/A',
+        isExpired,
+        timeRemaining: isExpired ? 'Expired' : `${timeRemaining} minutes`,
+        expiresAt: new Date(value.expiresAt).toISOString(),
+        hasData: !!value.data
+      });
+    }
   }
   
   return {
-    totalEntries: cache.size,
+    totalEntries: allKeys.length,
     activeEntries: entries.filter(e => !e.isExpired).length,
     expiredEntries: entries.filter(e => e.isExpired).length,
     similarityThreshold: SIMILARITY_THRESHOLD,
     debugMode: DEBUG_MODE,
+    storage: 'Redis',
     entries: entries.sort((a, b) => {
       // Sort: active first, then by expiration time
       if (a.isExpired !== b.isExpired) {
@@ -537,4 +726,3 @@ export function getCacheDebugInfo() {
 
 // Export logger functions for external use
 export { setFileLogging, setConsoleLogging, getLoggingConfig, clearLogFile } from './cacheLogger.js';
-

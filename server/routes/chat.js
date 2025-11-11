@@ -417,7 +417,14 @@ router.post('/chat', async (req, res) => {
       console.log(`   Target date: ${targetDate ? targetDate.toISOString() : 'none'}`);
       
       // Check cache first (with similarity detection)
-      const cachedResponse = getCachedResult(cacheKey, message);
+      let cachedResponse = null;
+      try {
+        cachedResponse = await getCachedResult(cacheKey, message);
+      } catch (cacheError) {
+        console.error('⚠️  [CACHE] Cache lookup failed:', cacheError.message);
+        // Continue without cache - don't fail the request
+      }
+      
       if (cachedResponse) {
         console.log('✅ Cache HIT - Using cached response for query');
         console.log(`   Cached reply length: ${cachedResponse.reply?.length || 0} chars`);
@@ -730,7 +737,7 @@ Remember the conversation history and build on what the user has asked before.${
         console.log(`   DB events: ${dbEvents?.length || 0}`);
         
         try {
-          setCachedResult(cacheKey, {
+          await setCachedResult(cacheKey, {
             reply: reply.trim(),
             citations: eventData?.citations || [],
             dbEvents: dbEvents || [],
@@ -738,7 +745,8 @@ Remember the conversation history and build on what the user has asked before.${
           }, DEFAULT_TTL, message); // Pass original message for similarity matching
           console.log(`✅ Response cached successfully`);
         } catch (cacheError) {
-          console.error(`❌ Failed to cache response:`, cacheError.message);
+          console.error(`⚠️  [CACHE] Failed to cache response:`, cacheError.message);
+          console.error(`   Cache operations will fail until Redis is configured and running`);
           // Don't fail the request if caching fails
         }
       } else {

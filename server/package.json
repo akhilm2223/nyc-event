@@ -28,7 +28,8 @@
     "mongoose": "^8.0.3",
     "node-cron": "^3.0.3",
     "node-fetch": "^3.3.2",
-    "puppeteer": "^24.28.0"
+    "puppeteer": "^24.28.0",
+    "redis": "^4.6.12"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
