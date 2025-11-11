@@ -3,6 +3,8 @@ import { searchEventsWithPerplexity } from '../services/perplexityService.js';
 import Event from '../models/Event.js';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
+import { generateCacheKey, getCachedResult, setCachedResult, DEFAULT_TTL } from '../services/queryCache.js';
 
 dotenv.config();
 
@@ -156,6 +158,19 @@ Only include real, verified events that are actually happening. If you can't fin
  */
 async function searchEventsInDatabase(query, targetDate = null) {
   try {
+    // Check if MongoDB is connected
+    const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
+    if (!mongoUri || mongoUri.trim() === '') {
+      console.log('⚠️ [DATA SOURCE: MONGODB] Database not configured - skipping database search');
+      return [];
+    }
+    
+    // Check mongoose connection state
+    if (mongoose.connection.readyState !== 1) {
+      console.log('⚠️ [DATA SOURCE: MONGODB] Database not connected - skipping database search');
+      return [];
+    }
+    
     console.log('🔍 [DATA SOURCE: MONGODB] Searching database...');
     
     // Build search criteria - prioritize date if provided
@@ -205,6 +220,7 @@ async function searchEventsInDatabase(query, targetDate = null) {
     }));
   } catch (error) {
     console.error('❌ [DATA SOURCE: MONGODB] Search failed:', error.message);
+    // Return empty array on error so the API can still work with other data sources
     return [];
   }
 }
@@ -276,12 +292,13 @@ router.post('/chat', async (req, res) => {
     let eventbriteEvents = null;
     let dbEvents = null; // Events from database
     let eventContext = '';
+    let targetDate = null; // Declare outside block for caching access
+    let cacheKey = null; // Cache key for event queries
 
     // Use database + API approach only (NO web scraping)
     
     if (isEventQuery) {
       // Extract date from query if mentioned
-      let targetDate = null;
       let targetDateStr = null;
       
       const messageLower = message.toLowerCase();
@@ -392,6 +409,40 @@ router.post('/chat', async (req, res) => {
       targetDateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
       console.log(`📅 Target date detected: ${targetDateStr} (${targetDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })})`);
       
+      // Update cache key with target date (using the variable declared outside)
+      cacheKey = generateCacheKey(message, targetDate);
+      console.log(`🔍 Checking cache for event query...`);
+      console.log(`   Query: "${message}"`);
+      console.log(`   Cache key: ${cacheKey}`);
+      console.log(`   Target date: ${targetDate ? targetDate.toISOString() : 'none'}`);
+      
+      // Check cache first (with similarity detection)
+      const cachedResponse = getCachedResult(cacheKey, message);
+      if (cachedResponse) {
+        console.log('✅ Cache HIT - Using cached response for query');
+        console.log(`   Cached reply length: ${cachedResponse.reply?.length || 0} chars`);
+        console.log(`   Cached citations: ${cachedResponse.citations?.length || 0}`);
+        console.log(`   Cached DB events: ${cachedResponse.dbEvents?.length || 0}`);
+        
+        // Add user message to history (already done above)
+        // Add cached AI response to history
+        session.history.push({
+          role: 'model',
+          content: cachedResponse.reply
+        });
+        
+        return res.json({
+          reply: cachedResponse.reply,
+          sessionId: sessionId,
+          historyLength: session.history.length,
+          citations: cachedResponse.citations || [],
+          dbEvents: cachedResponse.dbEvents || [],
+          cached: true // Flag to indicate this was served from cache
+        });
+      }
+      
+      console.log('💾 Cache MISS - fetching fresh data from APIs');
+      
       // Search database and APIs only (NO web scraping)
       const searchPromises = [];
       
@@ -478,18 +529,22 @@ router.post('/chat', async (req, res) => {
       let combinedContext = '';
       
       // Add Perplexity results
-      if (eventData) {
+      if (eventData && eventData.content) {
         const citationUrls = eventData.citations?.map((url, idx) => `[${idx + 1}] ${url}`).join('\n') || 'No URLs found';
         combinedContext += `\n\n===== REAL EVENT DATA FROM PERPLEXITY API =====\n${eventData.content}\n\n===== SOURCE URLS (USE THESE EXACT LINKS) =====\n${citationUrls}\n\n`;
       }
       
       // Add event data from database and APIs
       if (dbEvents && dbEvents.length > 0) {
-        const eventDataStr = dbEvents.map(e => 
-          `${e.name}\nDate & Time: ${e.time || 'TBD'}\nLocation: ${e.location || 'TBD'}\nPlatform: ${e.platform}\nSource: ${e.source || e.platform}\nLink: ${e.link}\nPrice: ${e.price || 'Check website'}\nDescription: ${e.description || ''}`
-        ).join('\n\n---\n\n');
+        const eventDataStr = dbEvents
+          .filter(e => e && e.name) // Filter out invalid events
+          .map(e => 
+            `${e.name || 'Event'}\nDate & Time: ${e.time || 'TBD'}\nLocation: ${e.location || 'TBD'}\nPlatform: ${e.platform || 'Unknown'}\nSource: ${e.source || e.platform || 'Unknown'}\nLink: ${e.link || 'N/A'}\nPrice: ${e.price || 'Check website'}\nDescription: ${e.description || ''}`
+          ).join('\n\n---\n\n');
         
-        combinedContext += `\n\n===== VERIFIED EVENT DATA FROM DATABASE & APIs =====\n${eventDataStr}\n\nIMPORTANT: These are REAL, VERIFIED events from our curated database and APIs. ALWAYS include ALL of these events in your response. Use the exact event names, times, locations, prices, and links shown above.`;
+        if (eventDataStr) {
+          combinedContext += `\n\n===== VERIFIED EVENT DATA FROM DATABASE & APIs =====\n${eventDataStr}\n\nIMPORTANT: These are REAL, VERIFIED events from our curated database and APIs. ALWAYS include ALL of these events in your response. Use the exact event names, times, locations, prices, and links shown above.`;
+        }
       }
       
       eventContext = combinedContext || eventContext;
@@ -581,25 +636,65 @@ Remember the conversation history and build on what the user has asked before.${
     }
     console.log('🤖 Asking Gemini to format response...');
 
+    // Validate contents array
+    if (!contents || contents.length === 0) {
+      throw new Error('No conversation content to send to Gemini');
+    }
+
     // Call Gemini API
     const key = process.env.GEMINI_API_KEY;
+    if (!key) {
+      throw new Error('GEMINI_API_KEY not configured');
+    }
+    
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`;
     
     const body = { contents };
 
-    const apiRes = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-
-    const data = await apiRes.json();
-    
-    if (!data.candidates || !data.candidates[0]) {
-      throw new Error('No response from Gemini');
+    let apiRes;
+    try {
+      apiRes = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+    } catch (fetchError) {
+      console.error('❌ Failed to fetch from Gemini API:', fetchError.message);
+      throw new Error(`Failed to connect to Gemini API: ${fetchError.message}`);
     }
 
-    const reply = data.candidates[0].content.parts[0].text;
+    let data;
+    try {
+      data = await apiRes.json();
+    } catch (jsonError) {
+      const errorText = await apiRes.text().catch(() => 'Unable to read response');
+      console.error('❌ Failed to parse Gemini API response:', errorText);
+      throw new Error(`Invalid response from Gemini API: ${jsonError.message}`);
+    }
+    
+    // Check for API errors
+    if (!apiRes.ok) {
+      console.error('❌ Gemini API error:', data);
+      throw new Error(`Gemini API error: ${data.error?.message || apiRes.statusText || 'Unknown error'}`);
+    }
+    
+    if (!data.candidates || !data.candidates[0]) {
+      console.error('❌ No response from Gemini:', data);
+      throw new Error('No response from Gemini API');
+    }
+
+    const candidate = data.candidates[0];
+    if (!candidate.content || !candidate.content.parts || !candidate.content.parts[0]) {
+      console.error('❌ Invalid response structure from Gemini:', data);
+      throw new Error('Invalid response structure from Gemini API');
+    }
+
+    const reply = candidate.content.parts[0].text;
+    
+    if (!reply) {
+      console.error('❌ Empty reply from Gemini:', data);
+      throw new Error('Empty reply from Gemini API');
+    }
     
     console.log('✅ Got response from Gemini');
 
@@ -609,19 +704,60 @@ Remember the conversation history and build on what the user has asked before.${
       content: reply
     });
 
-    res.json({
+    const responseData = {
       reply: reply.trim(),
       sessionId: sessionId,
       historyLength: session.history.length,
       citations: eventData?.citations || [], // Include citations from Perplexity
       dbEvents: dbEvents || [] // Include events from database and APIs
-    });
+    };
+    
+    // Cache the response if it's an event query
+    if (isEventQuery) {
+      // Generate cache key if not already set (fallback)
+      if (!cacheKey) {
+        cacheKey = generateCacheKey(message, targetDate);
+        console.log(`📝 Generated cache key: ${cacheKey}`);
+      }
+      
+      // Always cache event queries, even if targetDate is null (use message-only key)
+      if (cacheKey) {
+        console.log(`💾 Caching response for event query...`);
+        console.log(`   Cache key: ${cacheKey}`);
+        console.log(`   Target date: ${targetDate ? targetDate.toISOString() : 'none'}`);
+        console.log(`   Reply length: ${reply.trim().length} chars`);
+        console.log(`   Citations: ${eventData?.citations?.length || 0}`);
+        console.log(`   DB events: ${dbEvents?.length || 0}`);
+        
+        try {
+          setCachedResult(cacheKey, {
+            reply: reply.trim(),
+            citations: eventData?.citations || [],
+            dbEvents: dbEvents || [],
+            eventData: eventData ? { content: eventData.content, citations: eventData.citations } : null
+          }, DEFAULT_TTL, message); // Pass original message for similarity matching
+          console.log(`✅ Response cached successfully`);
+        } catch (cacheError) {
+          console.error(`❌ Failed to cache response:`, cacheError.message);
+          // Don't fail the request if caching fails
+        }
+      } else {
+        console.log(`⚠️  Skipping cache - no cache key available`);
+      }
+    } else {
+      console.log(`ℹ️  Not caching - not an event query`);
+    }
+
+    res.json(responseData);
 
   } catch (error) {
     console.error('❌ Error in chat endpoint:', error.message);
+    console.error('❌ Full error:', error);
+    console.error('❌ Stack trace:', error.stack);
     res.status(500).json({
       error: 'Failed to process message',
-      reply: "Sorry, I'm having trouble right now. Please try again!"
+      reply: "Sorry, I'm having trouble right now. Please try again!",
+      debug: error.message
     });
   }
 });

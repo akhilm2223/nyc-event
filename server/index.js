@@ -7,6 +7,10 @@ import webhookRouter from './routes/instaWebhook.js';
 import chatRouter from './routes/chat.js';
 import testInstagramRouter from './routes/testInstagram.js';
 
+// Import cache modules to ensure they initialize and show debug output
+import './services/cacheLogger.js';
+import './services/queryCache.js';
+
 // Load environment variables
 dotenv.config();
 
@@ -59,6 +63,7 @@ const startServer = async () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📍 Webhook URL: http://localhost:${PORT}/webhook`);
       console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`\n📊 Debug logging is ENABLED - cache operations will be logged to terminal\n`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
