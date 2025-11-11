@@ -1,6 +1,5 @@
 import express from 'express';
 import { searchEventsWithPerplexity } from '../services/perplexityService.js';
-import { searchEventbriteEvents } from '../services/eventbriteService.js';
 import Event from '../models/Event.js';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
@@ -448,30 +447,6 @@ router.post('/chat', async (req, res) => {
         );
       } else {
         console.log('⚠️ [DATA SOURCE: PERPLEXITY API] Skipped - API key not configured');
-      }
-      
-      // 3. Eventbrite API
-      if (process.env.EVENTBRITE_API_KEY) {
-        searchPromises.push(
-          (async () => {
-            try {
-              console.log('🎫 [DATA SOURCE: EVENTBRITE API] Starting search...');
-              console.log(`   → Target Date: ${targetDateStr}`);
-              const eventbriteResults = await searchEventbriteEvents(message, targetDateStr);
-              console.log(`✅ [DATA SOURCE: EVENTBRITE API] Search complete`);
-              console.log(`   → Found ${eventbriteResults.length} events`);
-              if (eventbriteResults.length > 0) {
-                console.log(`   → Sample events:`, eventbriteResults.slice(0, 2).map(e => e.name).join(', '));
-              }
-              return { platform: 'Eventbrite', events: eventbriteResults };
-            } catch (error) {
-              console.error('❌ [DATA SOURCE: EVENTBRITE API] Failed:', error.message);
-              return null;
-            }
-          })()
-        );
-      } else {
-        console.log('⚠️ [DATA SOURCE: EVENTBRITE API] Skipped - API key not configured');
       }
       
       // Run all searches in parallel
