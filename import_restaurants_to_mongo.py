@@ -84,7 +84,7 @@ def main():
         collection.create_index([("cuisineDescription", 1)])
         collection.create_index([("rating", -1)])
         collection.create_index([("priceLevel", 1)])
-        collection.create_index([("googlePlaceId", 1)], sparse=True)  # Not unique because many are null
+        collection.create_index([("googlePlaceId", 1)], sparse=True)  # Not unique because many are null(because google places coudl not find the restaurant for some of them)
         print("✅ Indexes created")
         
         # Show statistics
