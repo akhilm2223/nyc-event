@@ -50,6 +50,12 @@ build/
 nyc-events.json
 events.json
 
+# Large restaurant data files (>100MB)
+restaurant_docs.json
+restaurant_docs_with_reviews.json
+restaurant_docs_with_details.json
+DOHMH_New_York_City_Restaurant_Inspection_Results.csv
+
 # API request tracking
 .google_places_request_counter.json
 
