@@ -1,4 +1,4 @@
-# Dependencies
+0 # Dependencies
 node_modules/
 package-lock.json
 yarn.lock
@@ -49,4 +49,7 @@ build/
 # Scraped data
 nyc-events.json
 events.json
+
+# API request tracking
+.google_places_request_counter.json
 
